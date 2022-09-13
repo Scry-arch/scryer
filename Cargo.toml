@@ -6,9 +6,12 @@ edition = "2021"
 [dependencies]
 clap = { version = "3.2.14", features = ["derive"] }
 scry_sim = {path = "../scry_sim"}
-scryasm = {path = "../scryasm"}
+scry_asm = {path = "../scry_asm"}
+regex = "1.6.0"
+num-bigint = "0.4.3"
 
 [dev-dependencies]
 assert_cmd = "2.0.4"
 predicates = "2.1.1"
-assert_fs = "1.0.7"
+tempfile = "3.3.0"
+paste = "1.0.9"
