@@ -1,10 +1,11 @@
 mod simulator;
 
 use clap::Parser;
-use num_bigint::Sign;
+use num_bigint::{BigInt, BigUint, Sign};
 use scry_asm::Assemble;
 use scry_sim::{
-	BlockedMemory, CallFrameState, ExecState, Executor, OperandState, Scalar, Value, ValueType,
+	BlockedMemory, CallFrameState, ExecState, Executor, MetricReporter, OperandState, Scalar,
+	TrackReport, Value, ValueType,
 };
 use std::collections::HashMap;
 
@@ -15,6 +16,12 @@ struct Cli
 	/// The path to the file to execute
 	#[clap(parse(from_os_str))]
 	path: std::path::PathBuf,
+
+	/// For when the simulator needs to emulate the program exactly.
+	/// In this mode, the simulator's outputs (exit code, stdout, stderr) come
+	/// from the simulated program.
+	#[clap(short, long)]
+	machine_mode: bool,
 
 	/// Signals that the file is a binary assembly file (i.e. not text
 	/// assembly).
@@ -29,10 +36,9 @@ struct Cli
 
 fn parse_input(input: &String) -> OperandState<usize>
 {
-	use num_bigint::{BigInt, BigUint};
 	use regex::Regex;
 
-	let re = Regex::new(r"^(-?\d+)([u|i])(\d+)$").unwrap();
+	let re = Regex::new(r"^(-?\d+)(u|i)(\d+)$").unwrap();
 	let caps = re.captures_iter(input.as_str()).next().unwrap();
 
 	let byte_size_pow_2: u8 = caps[3].parse().unwrap();
@@ -71,6 +77,33 @@ fn parse_input(input: &String) -> OperandState<usize>
 		typ,
 		Scalar::Val(value_bytes.into_boxed_slice()),
 	))
+}
+
+fn operand_to_string(op: &OperandState<usize>) -> String
+{
+	if let OperandState::Ready(val) = op
+	{
+		let (mut val, typ, size_pow_2): (String, char, u8) = match val.value_type()
+		{
+			ValueType::Uint(x) =>
+			{
+				let int = BigUint::from_bytes_le(val.iter().next().unwrap().bytes().unwrap());
+				(int.to_string(), 'u', x)
+			},
+			ValueType::Int(x) =>
+			{
+				let int = BigInt::from_signed_bytes_le(val.iter().next().unwrap().bytes().unwrap());
+				(int.to_string(), 'i', x)
+			},
+		};
+		val.push(typ);
+		val.push_str(&*size_pow_2.to_string());
+		val
+	}
+	else
+	{
+		todo!()
+	}
 }
 
 fn main()
@@ -115,8 +148,9 @@ fn main()
 			reads: Vec::new(),
 		}],
 	};
+	let mut tracker = TrackReport::new();
 	let mut res =
-		Executor::from_state(&original_state, BlockedMemory::new(program, 0)).step(&mut ());
+		Executor::from_state(&original_state, BlockedMemory::new(program, 0)).step(&mut tracker);
 	while res.is_ok()
 	{
 		let exec = res.unwrap();
@@ -124,21 +158,61 @@ fn main()
 		if state.frame_stack.len() == 0
 		{
 			// Done
-			if let Some((OperandState::Ready(v), _)) = state.frame.op_queues.get(&0)
+			if let Some((OperandState::Ready(v), op_rest)) = state.frame.op_queues.get(&0)
 			{
-				std::process::exit(
-					v.iter()
-						.next()
-						.unwrap()
-						.bytes()
-						.map_or(123, |b| b[0] as i32),
-				);
+				if args.machine_mode
+				{
+					std::process::exit(
+						v.iter()
+							.next()
+							.unwrap()
+							.bytes()
+							.map_or(123, |b| b[0] as i32),
+					);
+				}
+				else
+				{
+					println!("----------  Returned Operands  ----------");
+					for op in std::iter::once(&OperandState::Ready(v.clone())).chain(op_rest.iter())
+					{
+						print!("{}, ", operand_to_string(op));
+					}
+
+					println!("\n----------  Simulation Metrics  ----------");
+					use scry_sim::Metric::*;
+					for metric in [
+						IssuedBranches,
+						IssuedCalls,
+						IssuedReturns,
+						TriggeredBranches,
+						TriggeredCalls,
+						TriggeredReturns,
+						ConsumedOperands,
+						ConsumedBytes,
+						QueuedValues,
+						QueuedValueBytes,
+						QueuedReads,
+						ReorderedOperands,
+						InstructionReads,
+						DataReads,
+						DataBytesRead,
+						DataBytesWritten,
+						UnalignedReads,
+						UnalignedWrites,
+					]
+					{
+						let metric_val = tracker.get_stat(metric);
+						println!("{:?}: {}", metric, metric_val);
+					}
+
+					return;
+				}
 			}
 			else
 			{
 				std::process::exit(123);
 			}
 		}
-		res = exec.step(&mut ());
+		res = exec.step(&mut tracker);
 	}
 }

@@ -1,6 +1,9 @@
+// #![feature(trace_macros)] //trace_macros!(true);
 use assert_cmd::Command;
+use duplicate::duplicate_item;
 use predicates::prelude::predicate;
 use scry_asm::Assemble;
+use scry_sim::{Metric::*, MetricReporter, TrackReport};
 use std::io::Write;
 
 const TEMPORARY_DIR: &'static str = "tests/tmp";
@@ -18,8 +21,11 @@ const TEMPORARY_DIR: &'static str = "tests/tmp";
 fn test_program<const INS: usize>(
 	program: &str,
 	inputs: [&str; INS],
-	expected_result: u8,
+	expected_mahine_result: u8,
+	expected_result: &str,
 	test_binary: bool,
+	machine_mode: bool,
+	expected_metrics: TrackReport,
 ) -> Result<(), Box<dyn std::error::Error>>
 {
 	let file_content = if test_binary
@@ -39,6 +45,10 @@ fn test_program<const INS: usize>(
 	// Run on the file with the given inputs
 	let mut cmd = Command::cargo_bin("scryer")?;
 	cmd.arg(file.path());
+	if machine_mode
+	{
+		cmd.arg("--machine-mode");
+	}
 	if test_binary
 	{
 		cmd.arg("--binary");
@@ -49,7 +59,60 @@ fn test_program<const INS: usize>(
 	}
 
 	// Check exit code
-	cmd.assert().code(predicate::eq(expected_result as i32));
+	if machine_mode
+	{
+		cmd.assert()
+			.code(predicate::eq(expected_mahine_result as i32))
+			.stdout(predicates::str::is_empty())
+			.stderr(predicates::str::is_empty());
+	}
+	else
+	{
+		cmd.assert().success().stdout(
+			predicate::str::is_match("Returned Operands(.)*?\n".to_owned() + expected_result)
+				.unwrap(),
+		);
+	}
+
+	// Check Metrics
+	if !machine_mode
+	{
+		let mut regex = r"Simulation Metrics(.)*?\n(.|\n)*?".to_owned();
+
+		for metric in [
+			IssuedBranches,
+			IssuedCalls,
+			IssuedReturns,
+			TriggeredBranches,
+			TriggeredCalls,
+			TriggeredReturns,
+			ConsumedOperands,
+			ConsumedBytes,
+			QueuedValues,
+			QueuedValueBytes,
+			QueuedReads,
+			ReorderedOperands,
+			InstructionReads,
+			DataReads,
+			DataBytesRead,
+			DataBytesWritten,
+			UnalignedReads,
+			UnalignedWrites,
+		]
+		{
+			let metric_val = expected_metrics.get_stat(metric);
+			if metric_val != 0
+			{
+				regex.push_str(
+					format!(r"{:?}(\s)*?:(\s)*?{}\n(.|\n)*?", metric, metric_val).as_str(),
+				);
+			}
+		}
+
+		cmd.assert()
+			.success()
+			.stdout(predicate::str::is_match(regex).unwrap());
+	}
 
 	// Success
 	Ok(())
@@ -69,7 +132,10 @@ macro_rules! test_program {
 	(
 		$name:ident
 		[
-			$([$($inputs:literal),+] -> $expected_out:literal)+
+			$(
+				[$($inputs:literal),+] -> [$expected_machine_out:literal, $expected_out:literal] :
+				[ $($metric:ident : $value:expr)+ ]
+			)+
 		]
 		$($program:tt)*
 	)=> {
@@ -82,7 +148,8 @@ macro_rules! test_program {
 					$(
 						[< $name $(_ $inputs)+ >]
 									[
-							[$($inputs),+] -> $expected_out
+							[$($inputs),+] -> [$expected_machine_out, $expected_out]
+							: [$($metric : $value)+]
 						]
 					)+
 				]
@@ -96,7 +163,10 @@ macro_rules! test_program {
 		@impl
 		@cases [
 			$name:ident
-			[ [$($inputs:literal),+] -> $expected_out:literal ]
+			[
+				[$($inputs:literal),+] -> [$expected_machine_out:literal, $expected_out:literal] :
+				[ $($metric:ident : $value:expr)+ ]
+			]
 			$($rest:tt)*
 		]
 		@program $program:ident
@@ -105,12 +175,26 @@ macro_rules! test_program {
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _assembly>]() -> Result<(), Box<dyn std::error::Error>>{
-				test_program($program, [$($inputs,)+], $expected_out, false)
+				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
+					false, false, [$(($metric, $value),)+].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _binary>]() -> Result<(), Box<dyn std::error::Error>>{
-				test_program($program, [$($inputs,)+], $expected_out, true)
+				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
+					true, false, [$(($metric, $value),)+].into())
+			}
+			#[test]
+			#[allow(non_snake_case)]
+			fn [< $name _assembly_machine>]() -> Result<(), Box<dyn std::error::Error>>{
+				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
+					false, true, [$(($metric, $value),)+].into())
+			}
+			#[test]
+			#[allow(non_snake_case)]
+			fn [< $name _binary_machine>]() -> Result<(), Box<dyn std::error::Error>>{
+				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
+					true, true, [$(($metric, $value),)+].into())
 			}
 		}
 		test_program!{
@@ -128,24 +212,47 @@ macro_rules! test_program {
 	) => {};
 }
 
+#[duplicate_item(
+	shared_metrics(operand_bytes) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 1
+		ConsumedBytes		: operand_bytes
+		QueuedValues		: 1
+		QueuedValueBytes	: operand_bytes
+		InstructionReads	: 2
+	];
+)]
 test_program! {
 	increment [
-		["0u0"] -> 1
-		["1i1"] -> 2
-		["2u2"] -> 3
-		["255u3"] -> 0
+		["0u0"] 	-> [1, "1u0"]	: [ shared_metrics([1]) ]
+		["1i1"] 	-> [2, "2i1"]	: [ shared_metrics([2]) ]
+		["2u2"] 	-> [3, "3u2"]	: [ shared_metrics([4]) ]
+		["255u3"] 	-> [0, "256u3"]	: [ shared_metrics([8]) ]
 	]
 	inc =>1
 	ret 0
 }
 
+#[duplicate_item(
+	shared_metrics(operand_bytes) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 3
+		ConsumedBytes		: operand_bytes*3
+		QueuedValues		: 2
+		QueuedValueBytes	: operand_bytes*2
+		InstructionReads	: 3
+	];
+)]
 test_program! {
-	add [
-		["0u3", "0u3"] -> 0
-		["0u2", "123u2"] -> 123
-		["-1i1", "4i1"] -> 3
-		["2i0", "-22i0"] -> 236
+	addInc [
+		["0u3", "0u3"]		-> [1, "1u3"]		: [ shared_metrics([8]) ]
+		["0u2", "123u2"]	-> [124, "124u2"]	: [ shared_metrics([4]) ]
+		["-1i1", "4i1"]		-> [4, "4i1"]		: [ shared_metrics([2]) ]
+		["2i0", "-22i0"]	-> [237, "-19i0"]	: [ shared_metrics([1]) ]
 	]
-	add =>1
+	add =>0
+	inc =>1
 	ret 0
 }
