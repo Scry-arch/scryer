@@ -246,7 +246,7 @@ test_program! {
 	];
 )]
 test_program! {
-	addInc [
+	add_increment [
 		["0u3", "0u3"]		-> [1, "1u3"]		: [ shared_metrics([8]) ]
 		["0u2", "123u2"]	-> [124, "124u2"]	: [ shared_metrics([4]) ]
 		["-1i1", "4i1"]		-> [4, "4i1"]		: [ shared_metrics([2]) ]
@@ -255,4 +255,34 @@ test_program! {
 	add =>0
 	inc =>1
 	ret 0
+}
+
+#[duplicate_item(
+	shared_metrics [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 3
+		ConsumedBytes		: 3
+		QueuedValues		: 3
+		QueuedValueBytes	: 3
+		InstructionReads	: 4
+	];
+)]
+#[duplicate_item(
+	test_name constant metrics;
+	[add_const_unsigned] [ 12u0] [
+		["0u0"]		-> [13, "13u0"]	: [ shared_metrics ]
+		["25u0"]	-> [38, "38u0"]	: [ shared_metrics ]
+	];
+	[add_const_signed] [ 54i0] [
+		["-54i0"]	-> [1, "1i0"]	: [ shared_metrics ]
+		["43i0"]	-> [98, "98i0"]	: [ shared_metrics ]
+	];
+)]
+test_program! {
+	test_name [ metrics	]
+	inc =>1
+	ret 2
+	const constant
+	add =>0
 }
