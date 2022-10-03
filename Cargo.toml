@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "3.2.14", features = ["derive"] }
+clap = { version = "4.0.8", features = ["derive"] }
 scry_sim = {path = "../scry_sim"}
 scry_asm = {path = "../scry_asm"}
 regex = "1.6.0"

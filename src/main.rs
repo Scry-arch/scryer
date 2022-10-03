@@ -4,8 +4,8 @@ use clap::Parser;
 use num_bigint::{BigInt, BigUint, Sign};
 use scry_asm::Assemble;
 use scry_sim::{
-	BlockedMemory, CallFrameState, ExecState, Executor, MetricReporter, OperandState, Scalar,
-	TrackReport, Value, ValueType,
+	BlockedMemory, CallFrameState, ExecState, Executor, MetricReporter, OperandList, OperandState,
+	Scalar, TrackReport, Value, ValueType,
 };
 use std::collections::HashMap;
 
@@ -14,7 +14,6 @@ use std::collections::HashMap;
 struct Cli
 {
 	/// The path to the file to execute
-	#[clap(parse(from_os_str))]
 	path: std::path::PathBuf,
 
 	/// For when the simulator needs to emulate the program exactly.
@@ -126,11 +125,11 @@ fn main()
 	};
 
 	// Ready inputs
-	let mut op_queues = HashMap::new();
+	let mut op_queue = HashMap::new();
 	if !args.input.is_empty()
 	{
 		let mut ops: Vec<_> = args.input.iter().map(|s| parse_input(s)).collect();
-		op_queues.insert(0, (ops.remove(0), ops));
+		op_queue.insert(0, OperandList::new(ops.remove(0), ops));
 	}
 
 	let original_state = ExecState {
@@ -138,13 +137,13 @@ fn main()
 		frame: CallFrameState {
 			ret_addr: 0,
 			branches: HashMap::new(),
-			op_queues,
+			op_queue,
 			reads: Vec::new(),
 		},
 		frame_stack: vec![CallFrameState {
 			ret_addr: 0,
 			branches: HashMap::new(),
-			op_queues: HashMap::new(),
+			op_queue: HashMap::new(),
 			reads: Vec::new(),
 		}],
 	};
@@ -158,60 +157,66 @@ fn main()
 		if state.frame_stack.len() == 0
 		{
 			// Done
-			if let Some((OperandState::Ready(v), op_rest)) = state.frame.op_queues.get(&0)
+			match state.frame.op_queue.get(&0)
 			{
-				if args.machine_mode
+				Some(ready_list) =>
 				{
-					std::process::exit(
-						v.iter()
-							.next()
-							.unwrap()
-							.bytes()
-							.map_or(123, |b| b[0] as i32),
-					);
-				}
-				else
-				{
-					println!("----------  Returned Operands  ----------");
-					for op in std::iter::once(&OperandState::Ready(v.clone())).chain(op_rest.iter())
+					if let OperandState::Ready(v) = &ready_list.first
 					{
-						print!("{}, ", operand_to_string(op));
-					}
+						if args.machine_mode
+						{
+							std::process::exit(
+								v.iter()
+									.next()
+									.unwrap()
+									.bytes()
+									.map_or(123, |b| b[0] as i32),
+							);
+						}
+						else
+						{
+							println!("----------  Returned Operands  ----------");
+							for op in ready_list.iter()
+							{
+								print!("{}, ", operand_to_string(op));
+							}
 
-					println!("\n----------  Simulation Metrics  ----------");
-					use scry_sim::Metric::*;
-					for metric in [
-						IssuedBranches,
-						IssuedCalls,
-						IssuedReturns,
-						TriggeredBranches,
-						TriggeredCalls,
-						TriggeredReturns,
-						ConsumedOperands,
-						ConsumedBytes,
-						QueuedValues,
-						QueuedValueBytes,
-						QueuedReads,
-						ReorderedOperands,
-						InstructionReads,
-						DataReads,
-						DataBytesRead,
-						DataBytesWritten,
-						UnalignedReads,
-						UnalignedWrites,
-					]
-					{
-						let metric_val = tracker.get_stat(metric);
-						println!("{:?}: {}", metric, metric_val);
-					}
+							println!("\n----------  Simulation Metrics  ----------");
+							use scry_sim::Metric::*;
+							for metric in [
+								IssuedBranches,
+								IssuedCalls,
+								IssuedReturns,
+								TriggeredBranches,
+								TriggeredCalls,
+								TriggeredReturns,
+								ConsumedOperands,
+								ConsumedBytes,
+								QueuedValues,
+								QueuedValueBytes,
+								QueuedReads,
+								ReorderedOperands,
+								InstructionReads,
+								DataReads,
+								DataBytesRead,
+								DataBytesWritten,
+								UnalignedReads,
+								UnalignedWrites,
+							]
+							{
+								let metric_val = tracker.get_stat(metric);
+								println!("{:?}: {}", metric, metric_val);
+							}
 
-					return;
-				}
+							// Success
+							return;
+						}
+					}
+				},
+				_ => (),
 			}
-			else
-			{
-				std::process::exit(123);
-			}
+			// Failure
+			std::process::exit(123)
 		}
 		res = exec.step(&mut tracker);
 	}

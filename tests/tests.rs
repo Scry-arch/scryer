@@ -230,8 +230,9 @@ test_program! {
 		["2u2"] 	-> [3, "3u2"]	: [ shared_metrics([4]) ]
 		["255u3"] 	-> [0, "256u3"]	: [ shared_metrics([8]) ]
 	]
-	inc =>1
-	ret 0
+				inc =>ret_at
+				ret ret_at
+	ret_at:
 }
 
 #[duplicate_item(
@@ -252,9 +253,10 @@ test_program! {
 		["-1i1", "4i1"]		-> [4, "4i1"]		: [ shared_metrics([2]) ]
 		["2i0", "-22i0"]	-> [237, "-19i0"]	: [ shared_metrics([1]) ]
 	]
-	add =>0
-	inc =>1
-	ret 0
+				add =>0
+				inc =>ret_at
+				ret ret_at
+	ret_at:
 }
 
 #[duplicate_item(
@@ -281,8 +283,34 @@ test_program! {
 )]
 test_program! {
 	test_name [ metrics	]
-	inc =>1
-	ret 2
-	const constant
-	add =>0
+				inc =>add_to
+				ret ret_at
+	add_to:		const constant
+				add =>ret_at
+	ret_at:
+}
+
+#[duplicate_item(
+	shared_metrics(operand_bytes) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 4
+		ConsumedBytes		: operand_bytes*4
+		QueuedValues		: 4
+		QueuedValueBytes	: operand_bytes*4
+		InstructionReads	: 4
+	];
+)]
+test_program! {
+	triple_using_duplicate [
+		["0u3"]		-> [0, "0u3"]		: [ shared_metrics([8]) ]
+		["12u2"]	-> [36, "36u2"]	: [ shared_metrics([4]) ]
+		["-5i1"]	-> [241, "-15i1"]	: [ shared_metrics([2]) ]
+		["14i0"]	-> [42, "42i0"]		: [ shared_metrics([1]) ]
+	]
+				dup =>add1, =>add2, =>
+	add1:		add =>add2
+				ret ret_at
+	add2:		add =>0
+	ret_at:
 }
