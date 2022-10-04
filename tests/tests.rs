@@ -298,6 +298,7 @@ test_program! {
 		ConsumedBytes		: operand_bytes*4
 		QueuedValues		: 4
 		QueuedValueBytes	: operand_bytes*4
+		ReorderedOperands	: 1
 		InstructionReads	: 4
 	];
 )]
@@ -312,5 +313,101 @@ test_program! {
 	add1:		add =>add2
 				ret ret_at
 	add2:		add =>0
+	ret_at:
+}
+
+#[duplicate_item(
+	shared_metrics(operand_bytes) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 4
+		ConsumedBytes		: operand_bytes*4
+		QueuedValues		: 2
+		QueuedValueBytes	: operand_bytes*2
+		ReorderedOperands	: 3
+		InstructionReads	: 4
+	];
+)]
+test_program! {
+	three_way_add_using_echo [
+		["0u2","1u2","2u2"]		-> [3, "3u2"]		: [ shared_metrics([4]) ]
+		["-5i2","-16i2","21i2"]	-> [0, "0i2"]		: [ shared_metrics([4]) ]
+	]
+				echo =>add1, =>add2, =>
+	add1:		add =>add2
+				ret ret_at
+	add2:		add =>0
+	ret_at:
+}
+
+#[duplicate_item(
+	shared_metrics(operand_bytes) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 1
+		ConsumedBytes		: operand_bytes*1
+		QueuedValues		: 1
+		QueuedValueBytes	: operand_bytes*1
+		ReorderedOperands	: 1
+		InstructionReads	: 45
+	];
+)]
+test_program! {
+	long_echo_with_nops [
+		["0u0"]		-> [255, "255u0"]	: [ shared_metrics([1]) ]
+		["123u2"]	-> [122, "122u2"]	: [ shared_metrics([4]) ]
+		["-124i1"]	-> [131, "-125i1"]	: [ shared_metrics([2]) ]
+		["14i3"]	-> [13, "13i3"]		: [ shared_metrics([8]) ]
+	]
+				echo =>to_add
+				// 40 nops ensure that only EchoLong can be used
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+				nop
+
+				ret ret_at
+	to_add:		dec =>ret_at
+				nop
+				nop
 	ret_at:
 }
