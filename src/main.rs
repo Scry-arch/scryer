@@ -4,8 +4,8 @@ use clap::Parser;
 use num_bigint::{BigInt, BigUint, Sign};
 use scry_asm::Assemble;
 use scry_sim::{
-	BlockedMemory, CallFrameState, ExecState, Executor, MetricReporter, OperandList, OperandState,
-	Scalar, TrackReport, Value, ValueType,
+	BlockedMemory, CallFrameState, ExecError, ExecState, Executor, MetricReporter, OperandList,
+	OperandState, Scalar, TrackReport, Value, ValueType,
 };
 use std::collections::HashMap;
 
@@ -105,6 +105,36 @@ fn operand_to_string(op: &OperandState<usize>) -> String
 	}
 }
 
+fn print_metrics(tracker: &TrackReport)
+{
+	println!("\n----------  Simulation Metrics  ----------");
+	use scry_sim::Metric::*;
+	for metric in [
+		IssuedBranches,
+		IssuedCalls,
+		IssuedReturns,
+		TriggeredBranches,
+		TriggeredCalls,
+		TriggeredReturns,
+		ConsumedOperands,
+		ConsumedBytes,
+		QueuedValues,
+		QueuedValueBytes,
+		QueuedReads,
+		ReorderedOperands,
+		InstructionReads,
+		DataReads,
+		DataBytesRead,
+		DataBytesWritten,
+		UnalignedReads,
+		UnalignedWrites,
+	]
+	{
+		let metric_val = tracker.get_stat(metric);
+		println!("{:?}: {}", metric, metric_val);
+	}
+}
+
 fn main()
 {
 	let args = Cli::parse();
@@ -181,32 +211,7 @@ fn main()
 								print!("{}, ", operand_to_string(op));
 							}
 
-							println!("\n----------  Simulation Metrics  ----------");
-							use scry_sim::Metric::*;
-							for metric in [
-								IssuedBranches,
-								IssuedCalls,
-								IssuedReturns,
-								TriggeredBranches,
-								TriggeredCalls,
-								TriggeredReturns,
-								ConsumedOperands,
-								ConsumedBytes,
-								QueuedValues,
-								QueuedValueBytes,
-								QueuedReads,
-								ReorderedOperands,
-								InstructionReads,
-								DataReads,
-								DataBytesRead,
-								DataBytesWritten,
-								UnalignedReads,
-								UnalignedWrites,
-							]
-							{
-								let metric_val = tracker.get_stat(metric);
-								println!("{:?}: {}", metric, metric_val);
-							}
+							print_metrics(&tracker);
 
 							// Success
 							return;
@@ -216,8 +221,24 @@ fn main()
 				_ => (),
 			}
 			// Failure
-			std::process::exit(123)
+			res = Err(ExecError::Err);
+			continue;
 		}
 		res = exec.step(&mut tracker);
 	}
+	// Implicit failure
+	match res
+	{
+		Err(err) =>
+		{
+			if !args.machine_mode
+			{
+				println!("----------  Error  ----------");
+				println!("{:?}", err);
+				print_metrics(&tracker);
+			}
+		},
+		Ok(_) => unreachable!(),
+	}
+	std::process::exit(123)
 }

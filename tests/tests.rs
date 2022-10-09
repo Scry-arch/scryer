@@ -411,3 +411,97 @@ test_program! {
 				nop
 	ret_at:
 }
+
+#[duplicate_item(
+	shared_metrics(operand_bytes) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 3
+		ConsumedBytes		: operand_bytes*3
+		QueuedValues		: 2
+		QueuedValueBytes	: operand_bytes*2
+		ReorderedOperands	: 2
+		InstructionReads	: 5
+		IssuedBranches		: 1
+		TriggeredBranches	: 1
+	];
+)]
+test_program! {
+	unconditional_jump [
+		["0u2","1u2"]	-> [2, "2u2"]			: [ shared_metrics([4]) ]
+		["5i3","16i3"]	-> [22, "22i3"]			: [ shared_metrics([8]) ]
+		["-1i0","123i0"]	-> [123, "123i0"]	: [ shared_metrics([1]) ]
+	]
+				echo =>inc1, =>after_inc1=>add1
+				ret ret_at
+				jmp add1, after_inc1
+	inc1:		inc =>after_inc1=>add1
+	after_inc1:
+				nop
+				nop
+				nop
+				nop
+	add1:		add =>0
+	ret_at:
+}
+
+#[duplicate_item(
+	shared_metrics(operand_bytes) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 3
+		ConsumedBytes		: operand_bytes*3
+		QueuedValues		: 2
+		QueuedValueBytes	: operand_bytes*2
+		ReorderedOperands	: 2
+		InstructionReads	: 6
+		IssuedBranches		: 2
+		TriggeredBranches	: 2
+	];
+)]
+test_program! {
+	jump_backwards [
+		["0u2","1u2"]	-> [2, "2u2"]			: [ shared_metrics([4]) ]
+		["5i3","16i3"]	-> [22, "22i3"]			: [ shared_metrics([8]) ]
+		["-1i0","123i0"]	-> [123, "123i0"]	: [ shared_metrics([1]) ]
+	]
+				echo =>skip_at=>skip_to=>inc1, =>skip_at=>skip_to=>add1
+				jmp skip_to, skip_at // Skip the return
+	skip_at:
+	jmp_to:		ret 0
+	skip_to:	jmp jmp_to, jmp_at
+	inc1:		inc =>add1
+	add1:		add =>jmp_at=>jmp_to=>skip_to
+	jmp_at:
+}
+
+#[duplicate_item(
+	shared_metrics(operand_bytes, branches) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 3
+		ConsumedBytes		: operand_bytes*3
+		QueuedValues		: 2
+		QueuedValueBytes	: operand_bytes+1
+		InstructionReads	: 4
+		IssuedBranches		: branches
+		TriggeredBranches	: branches
+	];
+)]
+test_program! {
+	conditional_jmp [
+		["0u2","1u2"]		-> [0, "0u0"]	: [ shared_metrics([4], [0]) ]
+		["5i3","16i3"]		-> [0, "0u0"]	: [ shared_metrics([8], [0]) ]
+		["-1i1","-1i1"]		-> [1, "1u0"]	: [ shared_metrics([2], [1]) ]
+		["4i0","4i0"]		-> [1, "1u0"]	: [ shared_metrics([1], [1]) ]
+	]
+	// Return 1 if they are equal, 0 otherwise
+				sub Low, =>0
+				jmp if_equal, 0
+	if_unequal:
+				ret 1
+				const 0u0
+	if_equal:
+				ret 1
+				const 1u0
+}
