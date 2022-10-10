@@ -46,9 +46,12 @@ struct Cli
 	timeout: usize,
 
 	/// What counter should be used to timeout.
-	#[arg(value_enum, default_value_t = TimeoutType::Seconds)]
 	#[clap(long)]
+	#[arg(value_enum, default_value_t = TimeoutType::Seconds)]
 	timeout_type: TimeoutType,
+
+	#[clap(long)]
+	debug: bool,
 }
 
 fn parse_input(input: &String) -> OperandState<usize>
@@ -196,12 +199,21 @@ fn main()
 		}],
 	};
 	let mut tracker = TrackReport::new();
+	if args.debug
+	{
+		dbg!(&original_state);
+	}
 	let mut res =
 		Executor::from_state(&original_state, BlockedMemory::new(program, 0)).step(&mut tracker);
 	while res.is_ok()
 	{
 		let exec = res.unwrap();
 		let state = exec.state();
+		if args.debug
+		{
+			dbg!(&state);
+		}
+
 		if state.frame_stack.len() == 0
 		{
 			// Done

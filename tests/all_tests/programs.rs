@@ -4,7 +4,7 @@ use duplicate::duplicate_item;
 use predicates::prelude::predicate;
 use scry_asm::Assemble;
 use scry_sim::{Metric::*, MetricReporter, TrackReport};
-use std::io::Write;
+use std::{io::Write, time::Duration};
 
 /// Tests that the given assembly program can be simulated with the given inputs
 /// to produce the given output.
@@ -16,6 +16,9 @@ use std::io::Write;
 ///
 /// 1. As textual assembly
 /// 1. As binary assembly (using `-b` flag)
+///
+/// All programs should terminate within 5 seconds (otherwise they are timed
+/// out).
 fn test_program<const INS: usize>(
 	program: &str,
 	inputs: [&str; INS],
@@ -56,21 +59,22 @@ fn test_program<const INS: usize>(
 		cmd.arg("-i=".to_owned() + input);
 	}
 
-	// Check exit code
-	if machine_mode
+	// Check Results
+	let assert = cmd.timeout(Duration::new(5, 0)).assert();
+	let assert = if machine_mode
 	{
-		cmd.assert()
+		assert
 			.code(predicate::eq(expected_mahine_result as i32))
 			.stdout(predicates::str::is_empty())
-			.stderr(predicates::str::is_empty());
+			.stderr(predicates::str::is_empty())
 	}
 	else
 	{
-		cmd.assert().success().stdout(
+		assert.success().stdout(
 			predicate::str::is_match("Returned Operands(.)*?\n".to_owned() + expected_result)
 				.unwrap(),
-		);
-	}
+		)
+	};
 
 	// Check Metrics
 	if !machine_mode
@@ -107,9 +111,7 @@ fn test_program<const INS: usize>(
 			}
 		}
 
-		cmd.assert()
-			.success()
-			.stdout(predicate::str::is_match(regex).unwrap());
+		assert.stdout(predicate::str::is_match(regex).unwrap());
 	}
 
 	// Success
@@ -502,4 +504,75 @@ test_program! {
 	if_equal:
 				ret 1
 				const 1u0
+}
+
+#[duplicate_item(
+	shared_metrics(extra_loops) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 5 + (4 * extra_loops)
+		ConsumedBytes		: 5 + (4 * extra_loops)
+		QueuedValues		: 7 + (4 * extra_loops)
+		QueuedValueBytes	: 7 + (4 * extra_loops)
+		InstructionReads	: 14 + (5 * extra_loops)
+		IssuedBranches		: 0 + (1 * extra_loops)
+		TriggeredBranches	: 0 + (1 * extra_loops)
+		ReorderedOperands	: 6 + (2 * extra_loops)
+	];
+)]
+test_program! {
+	fibonacci [
+		["0u0"]		-> [0, "0u0"]	: [
+			IssuedReturns		: 1
+			TriggeredReturns	: 1
+			ConsumedOperands	: 1
+			ConsumedBytes		: 1
+			QueuedValues		: 2
+			QueuedValueBytes	: 2
+			InstructionReads	: 4
+			IssuedBranches		: 1
+			TriggeredBranches	: 1
+			ReorderedOperands	: 1
+		]
+		["1u0"]		-> [1, "1u0"]		: [ shared_metrics([0]) ]
+		["2u0"]		-> [1, "1u0"]		: [ shared_metrics([1]) ]
+		["3u0"]		-> [2, "2u0"]		: [ shared_metrics([2]) ]
+		["4u0"]		-> [3, "3u0"]		: [ shared_metrics([3]) ]
+		["5u0"]		-> [5, "5u0"]		: [ shared_metrics([4]) ]
+		["6u0"]		-> [8, "8u0"]		: [ shared_metrics([5]) ]
+		["7u0"]		-> [13, "13u0"]		: [ shared_metrics([6]) ]
+		["8u0"]		-> [21, "21u0"]		: [ shared_metrics([7]) ]
+		["9u0"]		-> [34, "34u0"]		: [ shared_metrics([8]) ]
+		["10u0"]	-> [55, "55u0"]		: [ shared_metrics([9]) ]
+		["11u0"]	-> [89, "89u0"]		: [ shared_metrics([10]) ]
+		["12u0"]	-> [144, "144u0"]	: [ shared_metrics([11]) ]
+		["13u0"]	-> [233, "233u0"]	: [ shared_metrics([12]) ]
+	]
+	// Takes a u0 (n)(<14), returning a u0 result equals to the nth number in the fibonacci sequence.
+	entry:
+							dup 	=>dec_n, =>0								// Send to next jmp, and decrementor
+							jmp		early_ret, 0								// If n=0, result is 0
+
+							const 0u0											// Initial values
+							const 1u0
+							echo =>values, =>add_values
+	loop_start:
+	dec_n: 					dec 	=>0											// decrement n and send to loop condition and next decrementor
+							dup 	=>0,
+									=>loop_end=>dec_n
+							jmp 	loop_start, loop_end						// while n>0, repeat
+	values:					dup		=>loop_end=>loop_start=>add_values, =>0		// Incoming high value. Send it immediately to add, where it works as high value.
+																				// send it also to add in the next iteration, where it works as low value.
+	add_values:				add 	=>loop_end=>loop_start=>values				// add high and low values and output the next high value
+	loop_end:
+							// At this point the low value is the result.
+							// wait for it to be on the ready list
+							ret final_ret_trig
+							nop
+							nop
+							nop													// Get low value as result, throw high out
+	final_ret_trig:
+	early_ret: 				ret early_ret_trig									// n=0, return 0
+							const 0u0
+	early_ret_trig:
 }
