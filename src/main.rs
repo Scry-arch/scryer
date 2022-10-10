@@ -2,12 +2,20 @@ mod simulator;
 
 use clap::Parser;
 use num_bigint::{BigInt, BigUint, Sign};
+use regex::Regex;
 use scry_asm::Assemble;
 use scry_sim::{
-	BlockedMemory, CallFrameState, ExecError, ExecState, Executor, MetricReporter, OperandList,
-	OperandState, Scalar, TrackReport, Value, ValueType,
+	BlockedMemory, CallFrameState, ExecError, ExecState, Executor, Metric, MetricReporter,
+	OperandList, OperandState, Scalar, TrackReport, Value, ValueType,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
+
+#[derive(clap::ValueEnum, Clone, Eq, PartialEq)]
+enum TimeoutType
+{
+	Instructions,
+	Seconds,
+}
 
 /// Command-line arguments
 #[derive(Parser)]
@@ -31,12 +39,20 @@ struct Cli
 	/// Can be given multiple times for multiple input operands.
 	#[clap(short, long)]
 	input: Vec<String>,
+
+	/// Stop the simulation early.
+	#[clap(long)]
+	#[arg(default_value_t = 0)]
+	timeout: usize,
+
+	/// What counter should be used to timeout.
+	#[arg(value_enum, default_value_t = TimeoutType::Seconds)]
+	#[clap(long)]
+	timeout_type: TimeoutType,
 }
 
 fn parse_input(input: &String) -> OperandState<usize>
 {
-	use regex::Regex;
-
 	let re = Regex::new(r"^(-?\d+)(u|i)(\d+)$").unwrap();
 	let caps = re.captures_iter(input.as_str()).next().unwrap();
 
@@ -137,6 +153,8 @@ fn print_metrics(tracker: &TrackReport)
 
 fn main()
 {
+	let start_time = Instant::now();
+
 	let args = Cli::parse();
 
 	let contents = std::fs::read(args.path).unwrap();
@@ -224,6 +242,21 @@ fn main()
 			res = Err(ExecError::Err);
 			continue;
 		}
+
+		if args.timeout > 0
+			&& ((args.timeout_type == TimeoutType::Instructions
+				&& tracker.get_stat(Metric::InstructionReads) == args.timeout)
+				| (args.timeout_type == TimeoutType::Seconds
+					&& start_time.elapsed().as_secs() > args.timeout as u64))
+		{
+			if !args.machine_mode
+			{
+				println!("----------  Timeout  ----------");
+				print_metrics(&tracker);
+			}
+			std::process::exit(123)
+		}
+
 		res = exec.step(&mut tracker);
 	}
 	// Implicit failure
