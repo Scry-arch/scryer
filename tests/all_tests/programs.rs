@@ -96,7 +96,7 @@ fn test_program<const INS: usize>(
 			ReorderedOperands,
 			InstructionReads,
 			DataReads,
-			DataBytesRead,
+			DataReadBytes,
 			DataBytesWritten,
 			UnalignedReads,
 			UnalignedWrites,
@@ -575,4 +575,91 @@ test_program! {
 	early_ret: 				ret early_ret_trig									// n=0, return 0
 							const 0u0
 	early_ret_trig:
+}
+
+#[duplicate_item(
+	shared_metrics [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 2
+		ConsumedBytes		: 2
+		QueuedValues		: 1
+		QueuedValueBytes	: 1
+		QueuedReads			: 1
+		DataReads			: 1
+		DataReadBytes		: 1
+		InstructionReads	: 3
+	];
+)]
+test_program! {
+	load_from_array [
+		["6u0"] 	-> [124, "124u0"]	: [ shared_metrics ]
+		["8u0"] 	-> [125, "125u0"]	: [ shared_metrics ]
+		["10u0"] 	-> [126, "126u0"]	: [ shared_metrics ]
+		["12u0"] 	-> [127, "127u0"]	: [ shared_metrics ]
+	]
+				ld u0, =>add_one
+				ret ret_at
+				// Add one suc that the loaded value is consumed
+	add_one:	inc =>ret_at
+	ret_at:
+
+	// We use instructions as the load data.
+	// Since the low-order byte of each "const" instruction contains the immediate,
+	// use it to set the value
+	load_from:
+				const 123u0
+				const 124u0
+				const 125u0
+				const 126u0
+}
+
+#[duplicate_item(
+	shared_metrics(addr_size) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 11
+		ConsumedBytes		: 10 + addr_size
+		QueuedValues		: 10
+		QueuedValueBytes	: 10
+		QueuedReads			: 1
+		DataReads			: 1
+		DataReadBytes		: 1
+		ReorderedOperands	: 4
+		InstructionReads	: 18
+	];
+)]
+test_program! {
+	load_before_store [
+		["4u0"] 	-> [0, "0u0"]	: [ shared_metrics([1]) ]
+		["5u1"] 	-> [1, "1u0"]	: [ shared_metrics([2]) ]
+		["6u2"] 	-> [2, "2u0"]	: [ shared_metrics([4]) ]
+		["7u3"] 	-> [3, "3u0"]	: [ shared_metrics([8]) ]
+	]
+				ld u0, =>consume
+				ret ret_at
+	data:
+				// 4 bytes of data
+				nop
+				nop
+
+	init_data:
+				// Initialize data array to [0,1,...]
+				const 4u0
+				const 0u0
+				st
+				const 5u0
+				const 1u0
+				st
+				const 6u0
+				const 2u0
+				st
+				const 7u0
+				const 3u0
+				st
+
+	consume:
+				inc =>0
+				dec =>0
+	ret_at:
 }

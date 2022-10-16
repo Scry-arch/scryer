@@ -143,7 +143,7 @@ fn print_metrics(tracker: &TrackReport)
 		ReorderedOperands,
 		InstructionReads,
 		DataReads,
-		DataBytesRead,
+		DataReadBytes,
 		DataBytesWritten,
 		UnalignedReads,
 		UnalignedWrites,
@@ -203,8 +203,8 @@ fn main()
 	{
 		dbg!(&original_state);
 	}
-	let mut res =
-		Executor::from_state(&original_state, BlockedMemory::new(program, 0)).step(&mut tracker);
+	let mut res = Executor::from_state(&original_state, BlockedMemory::new(program.into_iter(), 0))
+		.step(&mut tracker);
 	while res.is_ok()
 	{
 		let exec = res.unwrap();
