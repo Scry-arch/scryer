@@ -271,12 +271,12 @@ test_program! {
 	];
 )]
 #[duplicate_item(
-	test_name constant metrics;
-	[add_const_unsigned] [ 12u0] [
+	test_name typ constant metrics;
+	[add_const_unsigned] [ u0 ] [ 12 ] [
 		["0u0"]		-> [13, "13u0"]	: [ shared_metrics ]
 		["25u0"]	-> [38, "38u0"]	: [ shared_metrics ]
 	];
-	[add_const_signed] [ 54i0] [
+	[add_const_signed] [ i0 ] [ 54 ] [
 		["-54i0"]	-> [1, "1i0"]	: [ shared_metrics ]
 		["43i0"]	-> [98, "98i0"]	: [ shared_metrics ]
 	];
@@ -285,7 +285,7 @@ test_program! {
 	test_name [ metrics	]
 				inc =>add_to
 				ret ret_at
-	add_to:		const constant
+	add_to:		const typ, constant
 				add =>ret_at
 	ret_at:
 }
@@ -500,10 +500,10 @@ test_program! {
 				jmp if_equal, 0
 	if_unequal:
 				ret 1
-				const 0u0
+				const u0, 0
 	if_equal:
 				ret 1
-				const 1u0
+				const u0, 1
 }
 
 #[duplicate_item(
@@ -553,8 +553,8 @@ test_program! {
 							dup 	=>dec_n, =>0								// Send to next jmp, and decrementor
 							jmp		early_ret, 0								// If n=0, result is 0
 
-							const 0u0											// Initial values
-							const 1u0
+							const u0, 0											// Initial values
+							const u0, 1
 							echo =>values, =>add_values
 	loop_start:
 	dec_n: 					dec 	=>0											// decrement n and send to loop condition and next decrementor
@@ -573,7 +573,7 @@ test_program! {
 							nop													// Get low value as result, throw high out
 	final_ret_trig:
 	early_ret: 				ret early_ret_trig									// n=0, return 0
-							const 0u0
+							const u0, 0
 	early_ret_trig:
 }
 
@@ -608,10 +608,10 @@ test_program! {
 	// Since the low-order byte of each "const" instruction contains the immediate,
 	// use it to set the value
 	load_from:
-				const 123u0
-				const 124u0
-				const 125u0
-				const 126u0
+				const u0, 123
+				const u0, 124
+				const u0, 125
+				const u0, 126
 }
 
 #[duplicate_item(
@@ -645,17 +645,17 @@ test_program! {
 
 	init_data:
 				// Initialize data array to [0,1,...]
-				const 4u0
-				const 0u0
+				const u0, 4
+				const u0, 0
 				st
-				const 5u0
-				const 1u0
+				const u0, 5
+				const u0, 1
 				st
-				const 6u0
-				const 2u0
+				const u0, 6
+				const u0, 2
 				st
-				const 7u0
-				const 3u0
+				const u0, 7
+				const u0, 3
 				st
 
 	consume:
