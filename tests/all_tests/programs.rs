@@ -5,6 +5,7 @@ use predicates::prelude::predicate;
 use scry_asm::Assemble;
 use scry_sim::{Metric::*, MetricReporter, TrackReport};
 use std::{io::Write, time::Duration};
+use std::iter::once;
 
 /// Tests that the given assembly program can be simulated with the given inputs
 /// to produce the given output.
@@ -20,7 +21,7 @@ use std::{io::Write, time::Duration};
 /// All programs should terminate within 5 seconds (otherwise they are timed
 /// out).
 fn test_program<const INS: usize>(
-	program: &str,
+	program: &[&'static str],
 	inputs: [&str; INS],
 	expected_mahine_result: u8,
 	expected_result: &str,
@@ -31,11 +32,11 @@ fn test_program<const INS: usize>(
 {
 	let file_content = if test_binary
 	{
-		scry_asm::Raw::assemble(std::iter::once(program)).unwrap()
+		scry_asm::Raw::assemble(program.iter().cloned()).unwrap()
 	}
 	else
 	{
-		program.as_bytes().iter().cloned().collect()
+		program.iter().flat_map(|snippet| snippet.as_bytes().into_iter().chain(once(&(' ' as u8)))).cloned().collect()
 	};
 
 	// Output program to a file
@@ -137,11 +138,11 @@ macro_rules! test_program {
 				[ $($metric:ident : $value:expr)+ ]
 			)+
 		]
-		$($program:tt)*
+		$($program:literal)*
 	)=> {
 		paste::paste!{
 			#[allow(non_upper_case_globals)]
-			const [< PROGRAM_ $name >]: &'static str = stringify!($($program)*);
+			const [< PROGRAM_ $name >]: &'static [&'static str] = &[$($program),*];
 			test_program! {
 				@impl
 				@cases [
@@ -230,9 +231,9 @@ test_program! {
 		["2u2"] 	-> [3, "3u2"]	: [ shared_metrics([4]) ]
 		["255u3"] 	-> [0, "256u3"]	: [ shared_metrics([8]) ]
 	]
-				inc =>ret_at
-				ret ret_at
-	ret_at:
+				"inc =>ret_at"
+				"ret ret_at"
+	"ret_at:"
 }
 
 #[duplicate_item(
@@ -253,10 +254,10 @@ test_program! {
 		["-1i1", "4i1"]		-> [4, "4i1"]		: [ shared_metrics([2]) ]
 		["2i0", "-22i0"]	-> [237, "-19i0"]	: [ shared_metrics([1]) ]
 	]
-				add =>0
-				inc =>ret_at
-				ret ret_at
-	ret_at:
+				"add =>0"
+				"inc =>ret_at"
+				"ret ret_at"
+	"ret_at:"
 }
 
 #[duplicate_item(
@@ -272,22 +273,22 @@ test_program! {
 )]
 #[duplicate_item(
 	test_name typ constant metrics;
-	[add_const_unsigned] [ u0 ] [ 12 ] [
+	[add_const_unsigned] [ "u0" ] [ "12" ] [
 		["0u0"]		-> [13, "13u0"]	: [ shared_metrics ]
 		["25u0"]	-> [38, "38u0"]	: [ shared_metrics ]
 	];
-	[add_const_signed] [ i0 ] [ 54 ] [
+	[add_const_signed] [ "i0" ] [ "54" ] [
 		["-54i0"]	-> [1, "1i0"]	: [ shared_metrics ]
 		["43i0"]	-> [98, "98i0"]	: [ shared_metrics ]
 	];
 )]
 test_program! {
 	test_name [ metrics	]
-				inc =>add_to
-				ret ret_at
-	add_to:		const typ, constant
-				add =>ret_at
-	ret_at:
+				"inc =>add_to"
+				"ret ret_at"
+	"add_to:"	"const" typ "," constant
+				"add =>ret_at"
+	"ret_at:"
 }
 
 #[duplicate_item(
@@ -309,11 +310,11 @@ test_program! {
 		["-5i1"]	-> [241, "-15i1"]	: [ shared_metrics([2]) ]
 		["14i0"]	-> [42, "42i0"]		: [ shared_metrics([1]) ]
 	]
-				dup =>add1, =>add2, =>
-	add1:		add =>add2
-				ret ret_at
-	add2:		add =>0
-	ret_at:
+				"dup =>add1, =>add2, =>"
+	"add1:"		"add =>add2"
+				"ret ret_at"
+	"add2:"		"add =>0"
+	"ret_at:"
 }
 
 #[duplicate_item(
@@ -333,11 +334,11 @@ test_program! {
 		["0u2","1u2","2u2"]		-> [3, "3u2"]		: [ shared_metrics([4]) ]
 		["-5i2","-16i2","21i2"]	-> [0, "0i2"]		: [ shared_metrics([4]) ]
 	]
-				echo =>add1, =>add2, =>
-	add1:		add =>add2
-				ret ret_at
-	add2:		add =>0
-	ret_at:
+				"echo =>add1, =>add2, =>"
+	"add1:"		"add =>add2"
+				"ret ret_at"
+	"add2:"		"add =>0"
+	"ret_at:"
 }
 
 #[duplicate_item(
@@ -359,57 +360,57 @@ test_program! {
 		["-124i1"]	-> [131, "-125i1"]	: [ shared_metrics([2]) ]
 		["14i3"]	-> [13, "13i3"]		: [ shared_metrics([8]) ]
 	]
-				echo =>to_add
+				"echo =>to_add"
 				// 40 nops ensure that only EchoLong can be used
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
 
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
 
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
 
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
-				nop
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
 
-				ret ret_at
-	to_add:		dec =>ret_at
-				nop
-				nop
-	ret_at:
+				"ret ret_at"
+	"to_add:"		"dec =>ret_at"
+				"nop"
+				"nop"
+	"ret_at:"
 }
 
 #[duplicate_item(
@@ -432,17 +433,17 @@ test_program! {
 		["5i3","16i3"]	-> [22, "22i3"]			: [ shared_metrics([8]) ]
 		["-1i0","123i0"]	-> [123, "123i0"]	: [ shared_metrics([1]) ]
 	]
-				echo =>inc1, =>after_inc1=>add1
-				ret ret_at
-				jmp add1, after_inc1
-	inc1:		inc =>after_inc1=>add1
-	after_inc1:
-				nop
-				nop
-				nop
-				nop
-	add1:		add =>0
-	ret_at:
+				"echo =>inc1, =>after_inc1=>add1"
+				"ret ret_at"
+				"jmp add1, after_inc1"
+	"inc1:"		"inc =>after_inc1=>add1"
+	"after_inc1:"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+	"add1:"		"add =>0"
+	"ret_at:"
 }
 
 #[duplicate_item(
@@ -465,14 +466,14 @@ test_program! {
 		["5i3","16i3"]	-> [22, "22i3"]			: [ shared_metrics([8]) ]
 		["-1i0","123i0"]	-> [123, "123i0"]	: [ shared_metrics([1]) ]
 	]
-				echo =>skip_at=>skip_to=>inc1, =>skip_at=>skip_to=>add1
-				jmp skip_to, skip_at // Skip the return
-	skip_at:
-	jmp_to:		ret 0
-	skip_to:	jmp jmp_to, jmp_at
-	inc1:		inc =>add1
-	add1:		add =>jmp_at=>jmp_to=>skip_to
-	jmp_at:
+				"echo =>skip_at=>skip_to=>inc1, =>skip_at=>skip_to=>add1"
+				"jmp skip_to, skip_at" // Skip the return
+	"skip_at:"
+	"jmp_to:"	"ret 0"
+	"skip_to:"	"jmp jmp_to, jmp_at"
+	"inc1:"		"inc =>add1"
+	"add1:"		"add =>jmp_at=>jmp_to=>skip_to"
+	"jmp_at:"
 }
 
 #[duplicate_item(
@@ -496,14 +497,14 @@ test_program! {
 		["4i0","4i0"]		-> [1, "1u0"]	: [ shared_metrics([1], [1]) ]
 	]
 	// Return 1 if they are equal, 0 otherwise
-				sub Low, =>0
-				jmp if_equal, 0
-	if_unequal:
-				ret 1
-				const u0, 0
-	if_equal:
-				ret 1
-				const u0, 1
+				"sub Low, =>0"
+				"jmp if_equal, 0"
+	"if_unequal:"
+				"ret 1"
+				"const u0, 0"
+	"if_equal:"
+				"ret 1"
+				"const u0, 1"
 }
 
 #[duplicate_item(
@@ -549,32 +550,32 @@ test_program! {
 		["13u0"]	-> [233, "233u0"]	: [ shared_metrics([12]) ]
 	]
 	// Takes a u0 (n)(<14), returning a u0 result equals to the nth number in the fibonacci sequence.
-	entry:
-							dup 	=>dec_n, =>0								// Send to next jmp, and decrementor
-							jmp		early_ret, 0								// If n=0, result is 0
+	"entry:"
+							"dup 	=>dec_n, =>0"								// Send to next jmp, and decrementor
+							"jmp		early_ret, 0"							// If n=0, result is 0
 
-							const u0, 0											// Initial values
-							const u0, 1
-							echo =>values, =>add_values
-	loop_start:
-	dec_n: 					dec 	=>0											// decrement n and send to loop condition and next decrementor
-							dup 	=>0,
-									=>loop_end=>dec_n
-							jmp 	loop_start, loop_end						// while n>0, repeat
-	values:					dup		=>loop_end=>loop_start=>add_values, =>0		// Incoming high value. Send it immediately to add, where it works as high value.
+							"const u0, 0"										// Initial values
+							"const u0, 1"
+							"echo =>values, =>add_values"
+	"loop_start:"
+	"dec_n:" 				"dec 	=>0"										// decrement n and send to loop condition and next decrementor
+							"dup 	=>0,"
+									"=>loop_end=>dec_n"
+							"jmp 	loop_start, loop_end"						// while n>0, repeat
+	"values:"				"dup		=>loop_end=>loop_start=>add_values, =>0"// Incoming high value. Send it immediately to add, where it works as high value.
 																				// send it also to add in the next iteration, where it works as low value.
-	add_values:				add 	=>loop_end=>loop_start=>values				// add high and low values and output the next high value
-	loop_end:
+	"add_values:"			"add 	=>loop_end=>loop_start=>values"				// add high and low values and output the next high value
+	"loop_end:"
 							// At this point the low value is the result.
 							// wait for it to be on the ready list
-							ret final_ret_trig
-							nop
-							nop
-							nop													// Get low value as result, throw high out
-	final_ret_trig:
-	early_ret: 				ret early_ret_trig									// n=0, return 0
-							const u0, 0
-	early_ret_trig:
+							"ret final_ret_trig"
+							"nop"
+							"nop"
+							"nop"												// Get low value as result, throw high out
+	"final_ret_trig:"
+	"early_ret:" 			"ret early_ret_trig"								// n=0, return 0
+							"const u0, 0"
+	"early_ret_trig:"
 }
 
 #[duplicate_item(
@@ -598,20 +599,20 @@ test_program! {
 		["10u0"] 	-> [126, "126u0"]	: [ shared_metrics ]
 		["12u0"] 	-> [127, "127u0"]	: [ shared_metrics ]
 	]
-				ld u0, =>add_one
-				ret ret_at
+				"ld u0, =>add_one"
+				"ret ret_at"
 				// Add one suc that the loaded value is consumed
-	add_one:	inc =>ret_at
-	ret_at:
+	"add_one:"	"inc =>ret_at"
+	"ret_at:"
 
 	// We use instructions as the load data.
 	// Since the low-order byte of each "const" instruction contains the immediate,
 	// use it to set the value
-	load_from:
-				const u0, 123
-				const u0, 124
-				const u0, 125
-				const u0, 126
+	"load_from:"
+				"const u0, 123"
+				"const u0, 124"
+				"const u0, 125"
+				"const u0, 126"
 }
 
 #[duplicate_item(
@@ -636,30 +637,62 @@ test_program! {
 		["6u2"] 	-> [2, "2u0"]	: [ shared_metrics([4]) ]
 		["7u3"] 	-> [3, "3u0"]	: [ shared_metrics([8]) ]
 	]
-				ld u0, =>consume
-				ret ret_at
-	data:
+				"ld u0, =>consume"
+				"ret ret_at"
+	"data:"
 				// 4 bytes of data
-				nop
-				nop
+				"nop"
+				"nop"
 
-	init_data:
+	"init_data:"
 				// Initialize data array to [0,1,...]
-				const u0, 4
-				const u0, 0
-				st
-				const u0, 5
-				const u0, 1
-				st
-				const u0, 6
-				const u0, 2
-				st
-				const u0, 7
-				const u0, 3
-				st
+				"const u0, 4"
+				"const u0, 0"
+				"st"
+				"const u0, 5"
+				"const u0, 1"
+				"st"
+				"const u0, 6"
+				"const u0, 2"
+				"st"
+				"const u0, 7"
+				"const u0, 3"
+				"st"
 
-	consume:
-				inc =>0
-				dec =>0
-	ret_at:
+	"consume:"
+				"inc =>0"
+				"dec =>0"
+	"ret_at:"
+}
+
+#[duplicate_item(
+	shared_metrics [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 2
+		ConsumedBytes		: 2
+		QueuedValues		: 1
+		QueuedValueBytes	: 1
+		QueuedReads			: 1
+		DataReads			: 1
+		DataReadBytes		: 1
+		InstructionReads	: 3
+	];
+)]
+test_program! {
+	load_from_static_data [
+		["6u0"] 	-> [121, "121u0"]	: [ shared_metrics ]
+		["7u0"] 	-> [122, "122u0"]	: [ shared_metrics ]
+		["8u0"] 	-> [123, "123u0"]	: [ shared_metrics ]
+		["9u0"] 	-> [124, "124u0"]	: [ shared_metrics ]
+	]
+				"ld u0, =>0"
+				"inc =>1"
+				"ret 0"
+	"data:"
+				".bytes u0, 120"
+				".bytes u0, 121"
+				".bytes u0, 122"
+				".bytes u0, 123"
+				
 }

@@ -471,6 +471,7 @@ name = "scry_asm"
 version = "0.0.0"
 dependencies = [
  "byteorder",
+ "duplicate",
  "quickcheck",
  "quickcheck_macros",
  "scry_isa",
