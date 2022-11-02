@@ -696,3 +696,49 @@ test_program! {
 				".bytes u0, 123"
 				
 }
+
+#[duplicate_item(
+	shared_metrics [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 6
+		ConsumedBytes		: 7
+		QueuedValues		: 5
+		QueuedValueBytes	: 6
+		QueuedReads			: 1
+		DataReads			: 1
+		DataReadBytes		: 2
+		InstructionReads	: 7
+	];
+)]
+test_program! {
+	load_from_label_address [
+		["0u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
+		["2u0"] 	-> [47, "47i1"]	: [ shared_metrics ]
+		["5u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
+		["7u0"] 	-> [49, "49i1"]	: [ shared_metrics ]
+	]
+				// Use input as index to 'data' array
+				// Emulate a multiply by 2 (array element size)
+				"dup =>0, =>0"
+				"add =>0"
+				"const u0, data"
+				"add =>0"
+	"load:"		"ld i1, =>0"
+				"inc =>1"
+				"ret 0"
+				".bytes i1, -1"
+				".bytes i1, -1"
+				".bytes i1, -1"
+				".bytes i1, -1"
+	"data:"
+				".bytes i1, 45"
+				".bytes i1, -1"
+				".bytes i1, 46"
+				".bytes i1, -1"
+				".bytes i1, -1"
+				".bytes i1, 47"
+				".bytes i1, -1"
+				".bytes i1, 48"
+				
+}
