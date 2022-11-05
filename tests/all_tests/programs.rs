@@ -515,10 +515,10 @@ test_program! {
 		ConsumedBytes		: 5 + (4 * extra_loops)
 		QueuedValues		: 7 + (4 * extra_loops)
 		QueuedValueBytes	: 7 + (4 * extra_loops)
-		InstructionReads	: 14 + (5 * extra_loops)
+		InstructionReads	: 12 + (5 * extra_loops)
 		IssuedBranches		: 0 + (1 * extra_loops)
 		TriggeredBranches	: 0 + (1 * extra_loops)
-		ReorderedOperands	: 6 + (2 * extra_loops)
+		ReorderedOperands	: 7 + (2 * extra_loops)
 	];
 )]
 test_program! {
@@ -569,9 +569,7 @@ test_program! {
 							// At this point the low value is the result.
 							// wait for it to be on the ready list
 							"ret final_ret_trig"
-							"nop"
-							"nop"
-							"nop"												// Get low value as result, throw high out
+							"cap =>2, =>0"										// Get low value as result, throw high out
 	"final_ret_trig:"
 	"early_ret:" 			"ret early_ret_trig"								// n=0, return 0
 							"const u0, 0"
