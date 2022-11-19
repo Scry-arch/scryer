@@ -4,8 +4,7 @@ use duplicate::duplicate_item;
 use predicates::prelude::predicate;
 use scry_asm::Assemble;
 use scry_sim::{Metric::*, MetricReporter, TrackReport};
-use std::{io::Write, time::Duration};
-use std::iter::once;
+use std::{io::Write, iter::once, time::Duration};
 
 /// Tests that the given assembly program can be simulated with the given inputs
 /// to produce the given output.
@@ -36,7 +35,11 @@ fn test_program<const INS: usize>(
 	}
 	else
 	{
-		program.iter().flat_map(|snippet| snippet.as_bytes().into_iter().chain(once(&(' ' as u8)))).cloned().collect()
+		program
+			.iter()
+			.flat_map(|snippet| snippet.as_bytes().into_iter().chain(once(&(' ' as u8))))
+			.cloned()
+			.collect()
 	};
 
 	// Output program to a file
@@ -278,8 +281,12 @@ test_program! {
 		["25u0"]	-> [38, "38u0"]	: [ shared_metrics ]
 	];
 	[add_const_signed] [ "i0" ] [ "54" ] [
-		["-54i0"]	-> [1, "1i0"]	: [ shared_metrics ]
-		["43i0"]	-> [98, "98i0"]	: [ shared_metrics ]
+	["-54i0"]	-> [1, "1i0"]	: [ shared_metrics ]
+	["43i0"]	-> [98, "98i0"]	: [ shared_metrics ]
+	];
+	[add_const_signed_negative] [ "i0" ] [ "-2" ] [
+		["-24i0"]	-> [231, "-25i0"]	: [ shared_metrics ]
+		["6i0"]		-> [5, "5i0"]	: [ shared_metrics ]
 	];
 )]
 test_program! {
@@ -692,7 +699,7 @@ test_program! {
 				".bytes u0, 121"
 				".bytes u0, 122"
 				".bytes u0, 123"
-				
+
 }
 
 #[duplicate_item(
@@ -707,24 +714,110 @@ test_program! {
 		DataReads			: 1
 		DataReadBytes		: 2
 		InstructionReads	: 7
+		ReorderedOperands	: 2
 	];
 )]
-test_program! {
-	load_from_label_address [
-		["0u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
-		["2u0"] 	-> [47, "47i1"]	: [ shared_metrics ]
-		["5u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
-		["7u0"] 	-> [49, "49i1"]	: [ shared_metrics ]
+#[duplicate_item(
+	[
+		name [load_from_absolute_address]
+		tests [
+			["0u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
+			["1u0"] 	-> [47, "47i1"]	: [ shared_metrics ]
+			["2u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
+			["3u0"] 	-> [49, "49i1"]	: [ shared_metrics ]
+		]
+		addr_type ["u0"]
+		addr_val ["22"]
 	]
+	[
+		name [load_from_label_address]
+		tests [
+			["0u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
+			["2u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
+			["5u0"] 	-> [51, "51i1"]	: [ shared_metrics ]
+			["7u0"] 	-> [53, "53i1"]	: [ shared_metrics ]
+		]
+		addr_type ["u0"]
+		addr_val ["data"]
+	]
+	[
+		name [load_from_relative_address]
+		tests [
+			["1i0"] 	-> [47, "47i1"]	: [ shared_metrics ]
+			["3i0"] 	-> [49, "49i1"]	: [ shared_metrics ]
+			["5i0"] 	-> [51, "51i1"]	: [ shared_metrics ]
+			["7i0"] 	-> [53, "53i1"]	: [ shared_metrics ]
+		]
+		addr_type ["i0"]
+		addr_val ["14"]
+	]
+	[
+		name [load_from_relative_labels]
+		tests [
+			["0i0"] 	-> [46, "46i1"]	: [ shared_metrics ]
+			["2i0"] 	-> [48, "48i1"]	: [ shared_metrics ]
+			["4i0"] 	-> [50, "50i1"]	: [ shared_metrics ]
+			["6i0"] 	-> [52, "52i1"]	: [ shared_metrics ]
+		]
+		addr_type ["i0"]
+		addr_val ["load=>data"]
+	]
+)]
+test_program! {
+	name [ tests ]
 				// Use input as index to 'data' array
 				// Emulate a multiply by 2 (array element size)
 				"dup =>0, =>0"
 				"add =>0"
-				"const u0, data"
+				"const " addr_type "," addr_val
 				"add =>0"
 	"load:"		"ld i1, =>0"
 				"inc =>1"
 				"ret 0"
+				".bytes i1, -1"
+				".bytes i1, -1"
+				".bytes i1, -1"
+				".bytes i1, -1"
+	"data:"
+				".bytes i1, 45"
+				".bytes i1, 46"
+				".bytes i1, 47"
+				".bytes i1, 48"
+				".bytes i1, 49"
+				".bytes i1, 50"
+				".bytes i1, 51"
+				".bytes i1, 52"
+
+}
+
+#[duplicate_item(
+	shared_metrics [
+		IssuedReturns		: 1
+		IssuedBranches		: 1
+		TriggeredReturns	: 1
+		TriggeredBranches	: 1
+		ConsumedOperands	: 6
+		ConsumedBytes		: 7
+		QueuedValues		: 5
+		QueuedValueBytes	: 6
+		QueuedReads			: 1
+		DataReads			: 1
+		DataReadBytes		: 2
+		InstructionReads	: 9
+		ReorderedOperands	: 3
+	];
+)]
+test_program! {
+	load_from_relative [
+		["0i0"] 	-> [46, "46i1"]	: [ shared_metrics ]
+		["2i0"] 	-> [47, "47i1"]	: [ shared_metrics ]
+		["5i0"] 	-> [48, "48i1"]	: [ shared_metrics ]
+		["7i0"] 	-> [49, "49i1"]	: [ shared_metrics ]
+	]
+				// Jump past data
+				"echo =>jmp_at=>start"
+				"jmp start, 0"
+	"jmp_at:"
 				".bytes i1, -1"
 				".bytes i1, -1"
 				".bytes i1, -1"
@@ -738,5 +831,18 @@ test_program! {
 				".bytes i1, 47"
 				".bytes i1, -1"
 				".bytes i1, 48"
-				
+
+				".bytes i1, -1"
+				".bytes i1, -1"
+				".bytes i1, -1"
+				".bytes i1, -1"
+				// Use input as index to 'data' array
+				// Emulate a multiply by 2 (array element size)
+	"start:"	"dup =>0, =>0"
+				"add =>0"
+				"const i0, load=>data"
+				"add =>0"
+	"load:"		"ld i1, =>0"
+				"inc =>1"
+				"ret 0"
 }
