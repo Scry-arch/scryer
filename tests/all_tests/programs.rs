@@ -796,23 +796,23 @@ test_program! {
 		IssuedBranches		: 1
 		TriggeredReturns	: 1
 		TriggeredBranches	: 1
-		ConsumedOperands	: 6
-		ConsumedBytes		: 7
-		QueuedValues		: 5
-		QueuedValueBytes	: 6
+		ConsumedOperands	: 3
+		ConsumedBytes		: 4
+		QueuedValues		: 2
+		QueuedValueBytes	: 3
 		QueuedReads			: 1
 		DataReads			: 1
 		DataReadBytes		: 2
-		InstructionReads	: 9
-		ReorderedOperands	: 3
+		InstructionReads	: 6
+		ReorderedOperands	: 2
 	];
 )]
 test_program! {
-	load_from_relative [
-		["0i0"] 	-> [46, "46i1"]	: [ shared_metrics ]
-		["2i0"] 	-> [47, "47i1"]	: [ shared_metrics ]
-		["5i0"] 	-> [48, "48i1"]	: [ shared_metrics ]
-		["7i0"] 	-> [49, "49i1"]	: [ shared_metrics ]
+	load_from_relative_indexed [
+		["0u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
+		["2u0"] 	-> [47, "47i1"]	: [ shared_metrics ]
+		["5u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
+		["7u0"] 	-> [49, "49i1"]	: [ shared_metrics ]
 	]
 				// Jump past data
 				"echo =>jmp_at=>start"
@@ -836,12 +836,7 @@ test_program! {
 				".bytes i1, -1"
 				".bytes i1, -1"
 				".bytes i1, -1"
-				// Use input as index to 'data' array
-				// Emulate a multiply by 2 (array element size)
-	"start:"	"dup =>0, =>0"
-				"add =>0"
-				"const i0, load=>data"
-				"add =>0"
+	"start:"	"const i0, load=>data"
 	"load:"		"ld i1, =>0"
 				"inc =>1"
 				"ret 0"
