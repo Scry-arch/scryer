@@ -65,6 +65,7 @@ fn test_program<const INS: usize>(
 
 	// Check Results
 	let assert = cmd.timeout(Duration::new(5, 0)).assert();
+
 	let assert = if machine_mode
 	{
 		assert
@@ -624,45 +625,51 @@ test_program! {
 	shared_metrics(addr_size) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
-		ConsumedOperands	: 11
-		ConsumedBytes		: 10 + addr_size
-		QueuedValues		: 10
-		QueuedValueBytes	: 10
+		IssuedBranches		: 1
+		TriggeredBranches	: 1
+		ConsumedOperands	: 13
+		ConsumedBytes		: 12 + addr_size
+		QueuedValues		: 12
+		QueuedValueBytes	: 12
 		QueuedReads			: 1
 		DataReads			: 1
 		DataReadBytes		: 1
-		ReorderedOperands	: 4
-		InstructionReads	: 18
+		ReorderedOperands	: 8
+		InstructionReads	: 19
 	];
 )]
 test_program! {
 	load_before_store [
-		["4u0"] 	-> [0, "0u0"]	: [ shared_metrics([1]) ]
-		["5u1"] 	-> [1, "1u0"]	: [ shared_metrics([2]) ]
-		["6u2"] 	-> [2, "2u0"]	: [ shared_metrics([4]) ]
-		["7u3"] 	-> [3, "3u0"]	: [ shared_metrics([8]) ]
+		["6u0"] 	-> [0, "0u0"]	: [ shared_metrics([1]) ]
+		["7u1"] 	-> [1, "1u0"]	: [ shared_metrics([2]) ]
+		["8u2"] 	-> [2, "2u0"]	: [ shared_metrics([4]) ]
+		["9u3"] 	-> [3, "3u0"]	: [ shared_metrics([8]) ]
 	]
-				"ld u0, =>consume"
+				"ld u0, =>data=>init_data=>consume"
 				"ret ret_at"
+				"jmp init_data, 0"
 	"data:"
-				// 4 bytes of data
-				"nop"
-				"nop"
+				".bytes u0, 255"
+				".bytes u0, 255"
+	"data_3:"	".bytes u0, 255"
+				".bytes u0, 255"
 
 	"init_data:"
 				// Initialize data array to [0,1,...]
-				"const u0, 4"
+				"const u0, data" // Absolute addressing
 				"const u0, 0"
 				"st"
-				"const u0, 5"
+				"const u0, 1" // Indexed absolute addressing
+				"const u0, data"
 				"const u0, 1"
 				"st"
-				"const u0, 6"
+				"const i0, store_3=>data_3" // Relative addressing
 				"const u0, 2"
-				"st"
-				"const u0, 7"
+	"store_3:"	"st"
+				"const u0, 3" // Relative indexed addressing
+				"const i0, store_4=>data"
 				"const u0, 3"
-				"st"
+	"store_4:"	"st"
 
 	"consume:"
 				"inc =>0"
