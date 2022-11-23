@@ -879,24 +879,24 @@ test_program! {
 	    IssuedReturns		: 1
 	    TriggeredBranches	: len-1
 	    TriggeredReturns	: 1
-	    ConsumedOperands	: len*8
-	    ConsumedBytes		: len*8
-	    QueuedValues		: 3+(len*7)
-	    QueuedValueBytes	: 3+(len*7)
+	    ConsumedOperands	: len*7
+	    ConsumedBytes		: len*7
+	    QueuedValues		: 3+(len*6)
+	    QueuedValueBytes	: 3+(len*6)
 	    QueuedReads			: len*2
 	    ReorderedOperands	: 5+(len*7)
-	    InstructionReads	: 6+(len*12)
+	    InstructionReads	: 6+(len*10)
 	    DataReads			: len
 	    DataReadBytes		: len
 	];
 )]
 test_program! {
 	find_max [
-		["36u0", "1u0"] -> [0, "0u0"]		: [ shared_metrics([1]) ]
-		["36u0", "2u0"] -> [1, "1u0"]		: [ shared_metrics([2]) ]
-		["38u0", "4u0"] -> [4, "4u0"]		: [ shared_metrics([4]) ]
-		["43u0", "3u0"]	-> [99, "99u0"]		: [ shared_metrics([3]) ]
-		["42u0", "7u0"]	-> [207, "207u0"]	: [ shared_metrics([7]) ]
+		["32u0", "1u0"] -> [0, "0u0"]		: [ shared_metrics([1]) ]
+		["32u0", "2u0"] -> [1, "1u0"]		: [ shared_metrics([2]) ]
+		["34u0", "4u0"] -> [4, "4u0"]		: [ shared_metrics([4]) ]
+		["39u0", "3u0"]	-> [99, "99u0"]		: [ shared_metrics([3]) ]
+		["38u0", "7u0"]	-> [207, "207u0"]	: [ shared_metrics([7]) ]
 	]
 				// Takes as input (1) the address of an u0-array, (2) its length
 				// returns the highest value in the array. (Array needn't be sorted)
@@ -905,35 +905,33 @@ test_program! {
 					"const u0, 0"					// Initial max
 					"dup =>pre_pick, =>compare"
 					"ret return"
-	"dup_addr:"		"dup =>load_next, =>inc_addr"
+	"dup_addr:"		"dup =>load_next, =>addr_repeat"
 	"loop_start:"
 	"dec_size:"		"dec =>0"
-					"dup =>loop_cond, =>loop_end=>loop_start=>dec_size"
+					"dup =>load_next, =>loop_end=>loop_start=>dec_size, =>"
 	"loop_cond:"	"jmp loop_start, loop_end"
 	"load_next:"	"ld u0, =>0"
 					"dup =>compare, =>pre_pick"
-					"const u0, 1"
-	"inc_addr:"		"add =>0"
-					"dup =>loop_end=>loop_start=>load_next,"
-						 "=>loop_end=>loop_start=>inc_addr"
+	"addr_repeat:"	"dup =>loop_end=>loop_start=>load_next,"
+						 "=>loop_end=>loop_start=>addr_repeat"
 	"compare:"		"sub High, =>pick_max"		// Do (max - new), and if carry is 1 new is higher.
 												// We dont need the lower order output
 	"pre_pick:"		"echo =>0"					// Pick either previous max (1) or new value (2)
 	"pick_max:"		"pick =>0"					// based on comparison (0)
 					"dup =>loop_end=>loop_start=>compare,"	// Send max to next iteration's compare and pick
 						"=>loop_end=>loop_start=>pre_pick"
-	"loop_end:"		"cap =>8, =>0"		// get final max for return
+	"loop_end:"		"cap =>6, =>0"		// get final max for return
 	"return:"
 
-	// Address: 36
+	// Address: 32
 	"data_1:"	".bytes u0, 0"
 				".bytes u0, 1"
-	// Address: 38
+	// Address: 34
 	"data_2:"	".bytes u0, 4"
 				".bytes u0, 1"
 				".bytes u0, 0"
 				".bytes u0, 2"
-	// Address: 42
+	// Address: 38
 	"data_3:"	".bytes u0, 103"
 				".bytes u0, 99"
 				".bytes u0, 0"
@@ -951,14 +949,14 @@ test_program! {
 		["73u0", "77u0", "3u0"] 	-> [0, "0i0, 4i0, 6i0, 8i0"]		: []
 		["72u0", "76u0", "4u0"] 	-> [3, "3i0, 4i0, 6i0, 8i0"]		: []
 	]
-	
+
 	"start:"
 						"echo =>dup_source, =>dup_sink, =>"
 						"dup =>check_zero, =>dec_count"
 	"check_zero:"		"jmp loop_end, 1"		//if count is zero, skip loop after return.
 						"ret return"
 	"dup_source:"		"dup =>load_next, =>inc_source"
-	
+
 	"loop_start:"
 	"load_next:"		"ld u0, =>store_copy"
 	"dec_count:"		"dec =>0"
@@ -981,7 +979,7 @@ test_program! {
 						"cap =>0, =>0"
 						"cap =>0, =>0"
 						"cap =>0, =>0"
-	
+
 						"const u0, dst1"
 						"ld i0, =>0"
 						"inc =>return"
@@ -1001,7 +999,7 @@ test_program! {
 						".bytes i0, 3"
 						".bytes i0, 5"
 						".bytes i0, 7"
-	
+
 	"dst1:"				".bytes i0, -1"
 	"dst2:"				".bytes i0, -1"
 	"dst3:"				".bytes i0, -1"
