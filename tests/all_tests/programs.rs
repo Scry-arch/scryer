@@ -139,7 +139,7 @@ macro_rules! test_program {
 		[
 			$(
 				[$($inputs:literal),+] -> [$expected_machine_out:literal, $expected_out:literal] :
-				[ $($metric:ident : $value:expr)+ ]
+				[ $($metric:ident : $value:expr)* ]
 			)+
 		]
 		$($program:literal)*
@@ -154,7 +154,7 @@ macro_rules! test_program {
 						[< $name $(_ $inputs)+ >]
 									[
 							[$($inputs),+] -> [$expected_machine_out, $expected_out]
-							: [$($metric : $value)+]
+							: [$($metric : $value)*]
 						]
 					)+
 				]
@@ -170,7 +170,7 @@ macro_rules! test_program {
 			$name:ident
 			[
 				[$($inputs:literal),+] -> [$expected_machine_out:literal, $expected_out:literal] :
-				[ $($metric:ident : $value:expr)+ ]
+				[ $($metric:ident : $value:expr)* ]
 			]
 			$($rest:tt)*
 		]
@@ -181,25 +181,25 @@ macro_rules! test_program {
 			#[allow(non_snake_case)]
 			fn [< $name _assembly>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					false, false, [$(($metric, $value),)+].into())
+					false, false, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _binary>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					true, false, [$(($metric, $value),)+].into())
+					true, false, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _assembly_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					false, true, [$(($metric, $value),)+].into())
+					false, true, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _binary_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					true, true, [$(($metric, $value),)+].into())
+					true, true, [$(($metric, $value),)*].into())
 			}
 		}
 		test_program!{
@@ -941,4 +941,69 @@ test_program! {
 				".bytes u0, 207"
 				".bytes u0, 168"
 				".bytes u0, 104"
+}
+
+test_program! {
+	memcpy [
+		["255u0", "255u0", "0u0"]	-> [0, "0i0, 0i0, 0i0, 0i0"]		: []
+		["75u0", "76u0", "1u0"] 	-> [8, "8i0, 0i0, 0i0, 0i0"]		: []
+		["74u0", "77u0", "2u0"] 	-> [0, "0i0, 6i0, 8i0, 0i0"]		: []
+		["73u0", "77u0", "3u0"] 	-> [0, "0i0, 4i0, 6i0, 8i0"]		: []
+		["72u0", "76u0", "4u0"] 	-> [3, "3i0, 4i0, 6i0, 8i0"]		: []
+	]
+	
+	"start:"
+						"echo =>dup_source, =>dup_sink, =>"
+						"dup =>check_zero, =>dec_count"
+	"check_zero:"		"jmp loop_end, 1"		//if count is zero, skip loop after return.
+						"ret return"
+	"dup_source:"		"dup =>load_next, =>inc_source"
+	
+	"loop_start:"
+	"load_next:"		"ld u0, =>store_copy"
+	"dec_count:"		"dec =>0"
+						"dup =>loop_cond, =>loop_end=>loop_start=>dec_count"
+	"loop_cond:"		"jmp loop_start, loop_end"
+	"dup_sink:"			"dup =>store_copy, =>inc_sink"
+	"inc_source:"		"inc =>0"
+						"dup =>loop_end=>loop_start=>load_next,"
+							"=>loop_end=>loop_start=>inc_source"
+	"inc_sink:"			"inc =>loop_end=>loop_start=>dup_sink"
+	"store_copy:"		"st"
+	"loop_end:"
+						"cap =>0, =>0"				// Throw out values surviving the loop exit
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+	
+						"const u0, dst1"
+						"ld i0, =>0"
+						"inc =>return"
+						"const u0, dst2"
+						"ld i0, =>0"
+						"inc =>return"
+						"const u0, dst3"
+						"ld i0, =>0"
+						"inc =>return"
+						"const u0, dst4"
+						"ld i0, =>0"
+						"inc =>return"
+	"return:"
+	// Address: 70
+	"src:"
+						".bytes i0, 2"
+						".bytes i0, 3"
+						".bytes i0, 5"
+						".bytes i0, 7"
+	
+	"dst1:"				".bytes i0, -1"
+	"dst2:"				".bytes i0, -1"
+	"dst3:"				".bytes i0, -1"
+	"dst4:"				".bytes i0, -1"
 }
