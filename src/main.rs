@@ -5,8 +5,8 @@ use num_bigint::{BigInt, BigUint, Sign};
 use regex::Regex;
 use scry_asm::Assemble;
 use scry_sim::{
-	BlockedMemory, CallFrameState, ExecError, ExecState, Executor, Metric, MetricReporter,
-	OperandList, OperandState, Scalar, TrackReport, Value, ValueType,
+	BlockedMemory, CallFrameState, ExecError, ExecState, Executor, MemError, Memory, Metric,
+	MetricReporter, OperandList, OperandState, Scalar, TrackReport, Value, ValueType,
 };
 use std::{collections::HashMap, time::Instant};
 
@@ -97,31 +97,50 @@ fn parse_input(input: &String) -> OperandState<usize>
 	))
 }
 
-fn operand_to_string(op: &OperandState<usize>) -> String
+fn operand_to_value(
+	op: &OperandState<usize>,
+	reads: &Vec<(usize, usize, ValueType)>,
+	memory: &mut impl Memory,
+) -> Result<Value, (MemError, usize)>
 {
-	if let OperandState::Ready(val) = op
+	match op
 	{
-		let (mut val, typ, size_pow_2): (String, char, u8) = match val.value_type()
+		OperandState::Ready(val) => Ok(val.clone()),
+		OperandState::MustRead(idx) =>
 		{
-			ValueType::Uint(x) =>
+			if let Some((addr, count, typ)) = reads.get(*idx)
 			{
-				let int = BigUint::from_bytes_le(val.iter().next().unwrap().bytes().unwrap());
-				(int.to_string(), 'u', x)
-			},
-			ValueType::Int(x) =>
+				assert!(*count == 1);
+				let mut val = Value::new_nan_typed(typ.clone());
+				memory.read_data(*addr, &mut val, 1, &mut ())?;
+				Ok(val)
+			}
+			else
 			{
-				let int = BigInt::from_signed_bytes_le(val.iter().next().unwrap().bytes().unwrap());
-				(int.to_string(), 'i', x)
-			},
-		};
-		val.push(typ);
-		val.push_str(&*size_pow_2.to_string());
-		val
+				panic!("Issued load doesn't exist in list");
+			}
+		},
 	}
-	else
+}
+
+fn value_to_string(val: Value) -> String
+{
+	let (mut val, typ, size_pow_2): (String, char, u8) = match val.value_type()
 	{
-		todo!()
-	}
+		ValueType::Uint(x) =>
+		{
+			let int = BigUint::from_bytes_le(val.iter().next().unwrap().bytes().unwrap());
+			(int.to_string(), 'u', x)
+		},
+		ValueType::Int(x) =>
+		{
+			let int = BigInt::from_signed_bytes_le(val.iter().next().unwrap().bytes().unwrap());
+			(int.to_string(), 'i', x)
+		},
+	};
+	val.push(typ);
+	val.push_str(&*size_pow_2.to_string());
+	val
 }
 
 fn print_metrics(tracker: &TrackReport)
@@ -203,8 +222,9 @@ fn main()
 	{
 		dbg!(&original_state);
 	}
-	let mut res = Executor::from_state(&original_state, BlockedMemory::new(program.into_iter(), 0))
-		.step(&mut tracker);
+	let mut memory = BlockedMemory::new(program.into_iter(), 0);
+	let mut res =
+		Executor::<BlockedMemory, _>::from_state(&original_state, &mut memory).step(&mut tracker);
 	while res.is_ok()
 	{
 		let exec = res.unwrap();
@@ -217,38 +237,51 @@ fn main()
 		if state.frame_stack.len() == 0
 		{
 			// Done
-			match state.frame.op_queue.get(&0)
+			if let Some(ready_list) = state.frame.op_queue.get(&0)
 			{
-				Some(ready_list) =>
+				let mut returned_values = Vec::new();
+
+				// Extract Values from all operands, both to ensure we can and to pretty print
+				for op in ready_list.iter()
 				{
-					if let OperandState::Ready(v) = &ready_list.first
+					returned_values
+						.push(operand_to_value(op, &state.frame.reads, &mut memory).unwrap());
+				}
+
+				if args.machine_mode
+				{
+					// Return the integer value of the first return operand or 123 if unavailable
+					std::process::exit(
+						returned_values
+							.iter()
+							.next()
+							.unwrap()
+							.get_first()
+							.bytes()
+							.map_or(123, |b| b[0] as i32),
+					);
+				}
+				else
+				{
+					// Pretty print the returned operands
+					println!("----------  Returned Operands  ----------");
+					for (val, op) in returned_values.into_iter().zip(ready_list.iter())
 					{
-						if args.machine_mode
+						let val_str = value_to_string(val);
+						if let OperandState::MustRead(idx) = op
 						{
-							std::process::exit(
-								v.iter()
-									.next()
-									.unwrap()
-									.bytes()
-									.map_or(123, |b| b[0] as i32),
-							);
+							let addr = state.frame.reads[*idx].0;
+							print!("Load({:#X},{}), ", addr, val_str);
 						}
 						else
 						{
-							println!("----------  Returned Operands  ----------");
-							for op in ready_list.iter()
-							{
-								print!("{}, ", operand_to_string(op));
-							}
-
-							print_metrics(&tracker);
-
-							// Success
-							return;
+							print!("{}, ", val_str);
 						}
 					}
-				},
-				_ => (),
+
+					print_metrics(&tracker);
+					return;
+				}
 			}
 			// Failure
 			res = Err(ExecError::Err);

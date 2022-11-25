@@ -76,8 +76,14 @@ fn test_program<const INS: usize>(
 	else
 	{
 		assert.success().stdout(
-			predicate::str::is_match("Returned Operands(.)*?\n".to_owned() + expected_result)
-				.unwrap(),
+			predicate::str::is_match(
+				"Returned Operands(.)*?\n".to_owned()
+					+ expected_result
+						.replace("(", "\\(")
+						.replace(")", "\\)")
+						.as_str(),
+			)
+			.unwrap(),
 		)
 	};
 
@@ -612,6 +618,37 @@ test_program! {
 	shared_metrics [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
+		ConsumedOperands	: 1
+		ConsumedBytes		: 1
+		QueuedValues		: 0
+		QueuedValueBytes	: 0
+		QueuedReads			: 1
+		DataReads			: 0
+		DataReadBytes		: 0
+		InstructionReads	: 2
+	];
+)]
+test_program! {
+	load_from_array [
+		["4u0"] 	-> [123, "Load(0x4,123u0)"]	: [ shared_metrics ]
+		["5u0"] 	-> [124, "Load(0x5,124u0)"]	: [ shared_metrics ]
+		["6u0"] 	-> [125, "Load(0x6,125u0)"]	: [ shared_metrics ]
+		["7u0"] 	-> [126, "Load(0x7,126u0)"]	: [ shared_metrics ]
+	]
+				"ld u0, =>ret_at"
+				"ret ret_at"
+	"ret_at:"
+	"load_from:"
+				".bytes u0, 123"
+				".bytes u0, 124"
+				".bytes u0, 125"
+				".bytes u0, 126"
+}
+
+#[duplicate_item(
+	shared_metrics [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
 		ConsumedOperands	: 2
 		ConsumedBytes		: 2
 		QueuedValues		: 1
@@ -623,26 +660,21 @@ test_program! {
 	];
 )]
 test_program! {
-	load_from_array [
-		["6u0"] 	-> [124, "124u0"]	: [ shared_metrics ]
-		["8u0"] 	-> [125, "125u0"]	: [ shared_metrics ]
-		["10u0"] 	-> [126, "126u0"]	: [ shared_metrics ]
-		["12u0"] 	-> [127, "127u0"]	: [ shared_metrics ]
+	consumed_loaded [
+		["6u0"] 	-> [121, "121u0"]	: [ shared_metrics ]
+		["7u0"] 	-> [122, "122u0"]	: [ shared_metrics ]
+		["8u0"] 	-> [123, "123u0"]	: [ shared_metrics ]
+		["9u0"] 	-> [124, "124u0"]	: [ shared_metrics ]
 	]
-				"ld u0, =>add_one"
-				"ret ret_at"
-				// Add one suc that the loaded value is consumed
-	"add_one:"	"inc =>ret_at"
-	"ret_at:"
+				"ld u0, =>0"
+				"inc =>1"
+				"ret 0"
+	"data:"
+				".bytes u0, 120"
+				".bytes u0, 121"
+				".bytes u0, 122"
+				".bytes u0, 123"
 
-	// We use instructions as the load data.
-	// Since the low-order byte of each "const" instruction contains the immediate,
-	// use it to set the value
-	"load_from:"
-				"const u0, 123"
-				"const u0, 124"
-				"const u0, 125"
-				"const u0, 126"
 }
 
 #[duplicate_item(
@@ -651,25 +683,25 @@ test_program! {
 		TriggeredReturns	: 1
 		IssuedBranches		: 1
 		TriggeredBranches	: 1
-		ConsumedOperands	: 13
-		ConsumedBytes		: 12 + addr_size
-		QueuedValues		: 12
-		QueuedValueBytes	: 12
+		ConsumedOperands	: 11
+		ConsumedBytes		: 10 + addr_size
+		QueuedValues		: 10
+		QueuedValueBytes	: 10
 		QueuedReads			: 1
-		DataReads			: 1
-		DataReadBytes		: 1
+		DataReads			: 0
+		DataReadBytes		: 0
 		ReorderedOperands	: 8
-		InstructionReads	: 19
+		InstructionReads	: 17
 	];
 )]
 test_program! {
 	load_before_store [
-		["6u0"] 	-> [0, "0u0"]	: [ shared_metrics([1]) ]
-		["7u1"] 	-> [1, "1u0"]	: [ shared_metrics([2]) ]
-		["8u2"] 	-> [2, "2u0"]	: [ shared_metrics([4]) ]
-		["9u3"] 	-> [3, "3u0"]	: [ shared_metrics([8]) ]
+		["6u0"] 	-> [0, "Load(0x6,0u0)"]	: [ shared_metrics([1]) ]
+		["7u1"] 	-> [1, "Load(0x7,1u0)"]	: [ shared_metrics([2]) ]
+		["8u2"] 	-> [2, "Load(0x8,2u0)"]	: [ shared_metrics([4]) ]
+		["9u3"] 	-> [3, "Load(0x9,3u0)"]	: [ shared_metrics([8]) ]
 	]
-				"ld u0, =>data=>init_data=>consume"
+				"ld u0, =>data=>init_data=>ret_at"
 				"ret ret_at"
 				"jmp init_data, 0"
 	"data:"
@@ -694,10 +726,6 @@ test_program! {
 				"const i0, store_4=>data"
 				"const u0, 3"
 	"store_4:"	"st"
-
-	"consume:"
-				"inc =>0"
-				"dec =>0"
 	"ret_at:"
 }
 
@@ -705,46 +733,14 @@ test_program! {
 	shared_metrics [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
-		ConsumedOperands	: 2
-		ConsumedBytes		: 2
-		QueuedValues		: 1
-		QueuedValueBytes	: 1
+		ConsumedOperands	: 5
+		ConsumedBytes		: 5
+		QueuedValues		: 4
+		QueuedValueBytes	: 4
 		QueuedReads			: 1
-		DataReads			: 1
-		DataReadBytes		: 1
-		InstructionReads	: 3
-	];
-)]
-test_program! {
-	load_from_static_data [
-		["6u0"] 	-> [121, "121u0"]	: [ shared_metrics ]
-		["7u0"] 	-> [122, "122u0"]	: [ shared_metrics ]
-		["8u0"] 	-> [123, "123u0"]	: [ shared_metrics ]
-		["9u0"] 	-> [124, "124u0"]	: [ shared_metrics ]
-	]
-				"ld u0, =>0"
-				"inc =>1"
-				"ret 0"
-	"data:"
-				".bytes u0, 120"
-				".bytes u0, 121"
-				".bytes u0, 122"
-				".bytes u0, 123"
-
-}
-
-#[duplicate_item(
-	shared_metrics [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 6
-		ConsumedBytes		: 7
-		QueuedValues		: 5
-		QueuedValueBytes	: 6
-		QueuedReads			: 1
-		DataReads			: 1
-		DataReadBytes		: 2
-		InstructionReads	: 7
+		DataReads			: 0
+		DataReadBytes		: 0
+		InstructionReads	: 6
 		ReorderedOperands	: 2
 	];
 )]
@@ -752,10 +748,10 @@ test_program! {
 	[
 		name [load_from_absolute_address]
 		tests [
-			["0u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
-			["1u0"] 	-> [47, "47i1"]	: [ shared_metrics ]
-			["2u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
-			["3u0"] 	-> [49, "49i1"]	: [ shared_metrics ]
+			["0u0"] 	-> [45, "Load(0x16,45i1)"]	: [ shared_metrics ]
+			["1u0"] 	-> [46, "Load(0x18,46i1)"]	: [ shared_metrics ]
+			["2u0"] 	-> [47, "Load(0x1A,47i1)"]	: [ shared_metrics ]
+			["3u0"] 	-> [48, "Load(0x1C,48i1)"]	: [ shared_metrics ]
 		]
 		addr_type ["u0"]
 		addr_val ["22"]
@@ -763,10 +759,10 @@ test_program! {
 	[
 		name [load_from_label_address]
 		tests [
-			["0u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
-			["2u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
-			["5u0"] 	-> [51, "51i1"]	: [ shared_metrics ]
-			["7u0"] 	-> [53, "53i1"]	: [ shared_metrics ]
+			["0u0"] 	-> [45, "Load(0x16,45i1)"]	: [ shared_metrics ]
+			["2u0"] 	-> [47, "Load(0x1A,47i1)"]	: [ shared_metrics ]
+			["5u0"] 	-> [50, "Load(0x20,50i1)"]	: [ shared_metrics ]
+			["7u0"] 	-> [52, "Load(0x24,52i1)"]	: [ shared_metrics ]
 		]
 		addr_type ["u0"]
 		addr_val ["data"]
@@ -774,10 +770,10 @@ test_program! {
 	[
 		name [load_from_relative_address]
 		tests [
-			["1i0"] 	-> [47, "47i1"]	: [ shared_metrics ]
-			["3i0"] 	-> [49, "49i1"]	: [ shared_metrics ]
-			["5i0"] 	-> [51, "51i1"]	: [ shared_metrics ]
-			["7i0"] 	-> [53, "53i1"]	: [ shared_metrics ]
+			["1i0"] 	-> [46, "Load(0x18,46i1)"]	: [ shared_metrics ]
+			["3i0"] 	-> [48, "Load(0x1C,48i1)"]	: [ shared_metrics ]
+			["5i0"] 	-> [50, "Load(0x20,50i1)"]	: [ shared_metrics ]
+			["7i0"] 	-> [52, "Load(0x24,52i1)"]	: [ shared_metrics ]
 		]
 		addr_type ["i0"]
 		addr_val ["14"]
@@ -785,10 +781,10 @@ test_program! {
 	[
 		name [load_from_relative_labels]
 		tests [
-			["0i0"] 	-> [46, "46i1"]	: [ shared_metrics ]
-			["2i0"] 	-> [48, "48i1"]	: [ shared_metrics ]
-			["4i0"] 	-> [50, "50i1"]	: [ shared_metrics ]
-			["6i0"] 	-> [52, "52i1"]	: [ shared_metrics ]
+			["0i0"] 	-> [45, "Load(0x16,45i1)"]	: [ shared_metrics ]
+			["2i0"] 	-> [47, "Load(0x1A,47i1)"]	: [ shared_metrics ]
+			["4i0"] 	-> [49, "Load(0x1E,49i1)"]	: [ shared_metrics ]
+			["6i0"] 	-> [51, "Load(0x22,51i1)"]	: [ shared_metrics ]
 		]
 		addr_type ["i0"]
 		addr_val ["load=>data"]
@@ -802,9 +798,9 @@ test_program! {
 				"add =>0"
 				"const " addr_type "," addr_val
 				"add =>0"
-	"load:"		"ld i1, =>0"
-				"inc =>1"
+	"load:"		"ld i1, =>1"
 				"ret 0"
+				".bytes i1, -1"
 				".bytes i1, -1"
 				".bytes i1, -1"
 				".bytes i1, -1"
@@ -827,23 +823,23 @@ test_program! {
 		IssuedBranches		: 1
 		TriggeredReturns	: 1
 		TriggeredBranches	: 1
-		ConsumedOperands	: 3
-		ConsumedBytes		: 4
-		QueuedValues		: 2
-		QueuedValueBytes	: 3
+		ConsumedOperands	: 2
+		ConsumedBytes		: 2
+		QueuedValues		: 1
+		QueuedValueBytes	: 1
 		QueuedReads			: 1
-		DataReads			: 1
-		DataReadBytes		: 2
-		InstructionReads	: 6
+		DataReads			: 0
+		DataReadBytes		: 0
+		InstructionReads	: 5
 		ReorderedOperands	: 2
 	];
 )]
 test_program! {
 	load_from_relative_indexed [
-		["0u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
-		["2u0"] 	-> [47, "47i1"]	: [ shared_metrics ]
-		["5u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
-		["7u0"] 	-> [49, "49i1"]	: [ shared_metrics ]
+		["0u0"] 	-> [45, "Load(0xC,45i1)"]	: [ shared_metrics ]
+		["2u0"] 	-> [46, "Load(0x10,46i1)"]	: [ shared_metrics ]
+		["5u0"] 	-> [47, "Load(0x16,47i1)"]	: [ shared_metrics ]
+		["7u0"] 	-> [48, "Load(0x1A,48i1)"]	: [ shared_metrics ]
 	]
 				// Jump past data
 				"echo =>jmp_at=>start"
@@ -868,8 +864,7 @@ test_program! {
 				".bytes i1, -1"
 				".bytes i1, -1"
 	"start:"	"const i0, load=>data"
-	"load:"		"ld i1, =>0"
-				"inc =>1"
+	"load:"		"ld i1, =>1"
 				"ret 0"
 }
 
@@ -943,11 +938,16 @@ test_program! {
 
 test_program! {
 	memcpy [
-		["255u0", "255u0", "0u0"]	-> [0, "0i0, 0i0, 0i0, 0i0"]		: []
-		["75u0", "76u0", "1u0"] 	-> [8, "8i0, 0i0, 0i0, 0i0"]		: []
-		["74u0", "77u0", "2u0"] 	-> [0, "0i0, 6i0, 8i0, 0i0"]		: []
-		["73u0", "77u0", "3u0"] 	-> [0, "0i0, 4i0, 6i0, 8i0"]		: []
-		["72u0", "76u0", "4u0"] 	-> [3, "3i0, 4i0, 6i0, 8i0"]		: []
+		["255u0", "255u0", "0u0"]	->
+			[0, "Load(0x44,0i0), Load(0x45,0i0), Load(0x46,0i0), Load(0x47,0i0)"] : []
+		["67u0", "68u0", "1u0"]		->
+			[7, "Load(0x44,7i0), Load(0x45,0i0), Load(0x46,0i0), Load(0x47,0i0)"] : []
+		["66u0", "69u0", "2u0"]		->
+			[0, "Load(0x44,0i0), Load(0x45,5i0), Load(0x46,7i0), Load(0x47,0i0)"] : []
+		["65u0", "69u0", "3u0"]		->
+			[0, "Load(0x44,0i0), Load(0x45,3i0), Load(0x46,5i0), Load(0x47,7i0)"] : []
+		["64u0", "68u0", "4u0"]		->
+			[2, "Load(0x44,2i0), Load(0x45,3i0), Load(0x46,5i0), Load(0x47,7i0)"] : []
 	]
 
 	"start:"
@@ -981,27 +981,23 @@ test_program! {
 						"cap =>0, =>0"
 
 						"const u0, dst1"
-						"ld i0, =>0"
-						"inc =>return"
+						"ld i0, =>return"
 						"const u0, dst2"
-						"ld i0, =>0"
-						"inc =>return"
+						"ld i0, =>return"
 						"const u0, dst3"
-						"ld i0, =>0"
-						"inc =>return"
+						"ld i0, =>return"
 						"const u0, dst4"
-						"ld i0, =>0"
-						"inc =>return"
+						"ld i0, =>return"
 	"return:"
-	// Address: 70
+	// Address: 64
 	"src:"
 						".bytes i0, 2"
 						".bytes i0, 3"
 						".bytes i0, 5"
 						".bytes i0, 7"
 
-	"dst1:"				".bytes i0, -1"
-	"dst2:"				".bytes i0, -1"
-	"dst3:"				".bytes i0, -1"
-	"dst4:"				".bytes i0, -1"
+	"dst1:"				".bytes i0, 0"
+	"dst2:"				".bytes i0, 0"
+	"dst3:"				".bytes i0, 0"
+	"dst4:"				".bytes i0, 0"
 }
