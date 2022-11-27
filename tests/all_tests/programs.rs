@@ -949,7 +949,8 @@ test_program! {
 		["64u0", "68u0", "4u0"]		->
 			[2, "Load(0x44,2i0), Load(0x45,3i0), Load(0x46,5i0), Load(0x47,7i0)"] : []
 	]
-
+						// Takes source address, destination address and length.
+						// Copies the source array with given length to the destination.
 	"start:"
 						"echo =>dup_source, =>dup_sink, =>"
 						"dup =>check_zero, =>dec_count"
@@ -1000,4 +1001,60 @@ test_program! {
 	"dst2:"				".bytes i0, 0"
 	"dst3:"				".bytes i0, 0"
 	"dst4:"				".bytes i0, 0"
+}
+
+test_program! {
+	strcpy [
+		["57u0", "54u0"]	->
+			[255, "Load(0x38,255u0), Load(0x39,223u0), Load(0x3A,0u0), Load(0x3B,255u0)"] : []
+		["57u0", "53u0"]	->
+			[255, "Load(0x38,255u0), Load(0x39,211u0), Load(0x3A,223u0), Load(0x3B,0u0)"] : []
+		["56u0", "52u0"]	->
+			[199, "Load(0x38,199u0), Load(0x39,211u0), Load(0x3A,223u0), Load(0x3B,0u0)"] : []
+	]
+					// Takes destination address and source address.
+					// Copies the string from source to destination including final null character
+	"start:"
+						"echo =>dup_dst,  =>dup_src"
+						"ret return_at"
+
+	"loop_start:"
+	"dup_src:"			"dup =>load, =>inc_src"
+	"load:"				"ld u0, =>0"
+						"dup =>loop_cond, =>store"
+	"loop_cond:"		"jmp loop_start, loop_end"
+	"dup_dst:"			"dup =>store, =>0"
+						"inc =>loop_end=>loop_start=>dup_dst"
+	"inc_src:"			"inc =>loop_end=>loop_start=>dup_src"
+	"store:"			"st"
+	"loop_end:"
+						"cap =>0, =>0"// Throw out values surviving the loop exit
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+						"cap =>0, =>0"
+
+						"const u0, dst1"
+						"ld u0, =>return_at"
+						"const u0, dst2"
+						"ld u0, =>return_at"
+						"const u0, dst3"
+						"ld u0, =>return_at"
+						"const u0, dst4"
+						"ld u0, =>return_at"
+	"return_at:"
+	// Address: 52
+	"src:"
+						".bytes u0, 199"
+						".bytes u0, 211"
+						".bytes u0, 223"
+						".bytes u0, 0"
+
+	"dst1:"				".bytes u0, 255"
+	"dst2:"				".bytes u0, 255"
+	"dst3:"				".bytes u0, 255"
+	"dst4:"				".bytes u0, 255"
 }
