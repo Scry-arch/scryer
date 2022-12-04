@@ -1058,3 +1058,87 @@ test_program! {
 	"dst3:"				".bytes u0, 255"
 	"dst4:"				".bytes u0, 255"
 }
+
+#[duplicate_item(
+	shared_metrics [
+		IssuedBranches		: 0
+		IssuedReturns		: 2
+		IssuedCalls			: 1
+		TriggeredBranches	: 0
+		TriggeredReturns	: 2
+		TriggeredCalls		: 1
+		ConsumedOperands	: 3
+		ConsumedBytes		: 3
+		QueuedValues		: 3
+		QueuedValueBytes	: 3
+		QueuedReads			: 0
+		ReorderedOperands	: 3
+		InstructionReads	: 8
+		DataReads			: 0
+		DataReadBytes		: 0
+	];
+)]
+test_program! {
+	simple_call [
+		["0u0"] 	-> [3, "3u0"]		: [ shared_metrics ]
+		["1u0"] 	-> [4, "4u0"]		: [ shared_metrics ]
+		["2u0"] 	-> [5, "5u0"]		: [ shared_metrics ]
+		["244u0"]	-> [247, "247u0"]	: [ shared_metrics ]
+	]
+
+	"entry:"
+					"echo =>call_inputs"
+					"const u0, addr_three"
+					"call 0"
+	"call_inputs:"
+					"echo =>return_at"
+					"ret return_at"
+	"return_at:"
+
+	"addr_three:"
+					"const u0, 3"
+					"add =>1"
+					"ret 0"
+}
+
+#[duplicate_item(
+	shared_metrics [
+		IssuedBranches		: 0
+		IssuedReturns		: 2
+		IssuedCalls			: 1
+		TriggeredBranches	: 0
+		TriggeredReturns	: 2
+		TriggeredCalls		: 1
+		ConsumedOperands	: 3
+		ConsumedBytes		: 3
+		QueuedValues		: 3
+		QueuedValueBytes	: 3
+		QueuedReads			: 0
+		ReorderedOperands	: 1
+		InstructionReads	: 7
+		DataReads			: 0
+		DataReadBytes		: 0
+	];
+)]
+test_program! {
+	queue_past_call [
+		["0u0"] 	-> [3, "3u0"]		: [ shared_metrics ]
+		["1u0"] 	-> [4, "4u0"]		: [ shared_metrics ]
+		["2u0"] 	-> [5, "5u0"]		: [ shared_metrics ]
+		["244u0"]	-> [247, "247u0"]	: [ shared_metrics ]
+	]
+
+	"entry:"
+					"echo =>3" // =>call_inputs=>|=>call_inputs:
+					"const u0, return_three"
+					"call 0"
+	"call_inputs:"
+					"add =>return_at"
+					"ret return_at"
+	"return_at:"
+
+	"return_three:"
+					"ret return_at2"
+					"const u0, 3"
+	"return_at2:"
+}
