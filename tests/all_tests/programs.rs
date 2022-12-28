@@ -37,7 +37,7 @@ fn test_program<const INS: usize>(
 	{
 		program
 			.iter()
-			.flat_map(|snippet| snippet.as_bytes().into_iter().chain(once(&(' ' as u8))))
+			.flat_map(|snippet| snippet.as_bytes().into_iter().chain(once(&('\n' as u8))))
 			.cloned()
 			.collect()
 	};
@@ -50,6 +50,7 @@ fn test_program<const INS: usize>(
 	// Run on the file with the given inputs
 	let mut cmd = Command::cargo_bin("scryer")?;
 	cmd.arg(file.path());
+	// cmd.arg("--debug");
 	if machine_mode
 	{
 		cmd.arg("--machine-mode");
@@ -75,13 +76,17 @@ fn test_program<const INS: usize>(
 	}
 	else
 	{
+		// print!("{}",std::str::from_utf8(assert.get_output().stderr.as_slice()).unwrap());
 		assert.success().stdout(
 			predicate::str::is_match(
-				"Returned Operands(.)*?\n".to_owned()
+				"Returned Operands(.)*?\\n".to_owned()
 					+ expected_result
+						// Escape any parentheses in the expected result
 						.replace("(", "\\(")
 						.replace(")", "\\)")
-						.as_str(),
+						.as_str()
+					// Ensure only a superfluous comma and whitespace may follow the expected
+					 + "(, )?\\n",
 			)
 			.unwrap(),
 		)
@@ -1129,16 +1134,233 @@ test_program! {
 	]
 
 	"entry:"
-					"echo =>3" // =>call_inputs=>|=>call_inputs:
-					"const u0, return_three"
+					"echo =>|=>add_result"
+					"const u0, fn_return_three"
 					"call 0"
 	"call_inputs:"
-					"add =>return_at"
+	"add_result:"	"add =>return_at"
 					"ret return_at"
 	"return_at:"
 
-	"return_three:"
+	"fn_return_three:"
 					"ret return_at2"
 					"const u0, 3"
 	"return_at2:"
+}
+
+test_program! {
+	cmp_i8 [
+		["0u0", "0u0"] 	-> [0, "0i0"]		: []
+		["0u0", "1u0"] 	-> [142, "-114i0"]	: []
+		["1u0", "0u0"] 	-> [114, "114i0"]	: []
+		["0u0", "2u0"] 	-> [128, "-128i0"]	: []
+	]
+
+	"entry:"
+								"echo =>entry_add1, =>entry_add2"
+								// Convert indices to pointers into the array
+								"const u0, data_i8"
+	"entry_add1:"				"add =>fn_cmp_i8_args"
+								"const u0, data_i8"
+	"entry_add2:"				"add =>fn_cmp_i8_args"
+
+								// Call
+								"const u0, fn_cmp_i8"
+								"call 0"
+	"fn_cmp_i8_args:"
+								// Return result
+								"echo =>entry_ret"
+								"ret 0"
+	"entry_ret:"
+
+	// bsearch comparison of i8 pointers
+	"fn_cmp_i8:"
+								"echo =>fn_cmp_i8_ld1, =>fn_cmp_i8_ld2"
+	"fn_cmp_i8_ld1:"			"ld i0, =>fn_cmp_i8_sub"
+	"fn_cmp_i8_ld2:"			"ld i0, =>fn_cmp_i8_sub"
+								"ret fn_cmp_i8_ret"
+	"fn_cmp_i8_sub:"			"sub =>0"
+	"fn_cmp_i8_ret:"
+
+	"data_i8:"
+								".bytes i0, -124"
+								".bytes i0, -10"
+								".bytes i0, 10"
+
+}
+
+test_program! {
+	bsearch [
+		// Empty array
+		["0i0", "0u0", "1u0"] 	-> [0, "0u0"]		: []
+		// Single-element array
+		["-1i0", "1u0", "1u0"]  -> [0, "0u0"]		: []
+		["0i0", "1u0", "1u0"] 	-> [4, "4u0"]		: []
+		["1i0", "1u0", "1u0"] 	-> [0, "0u0"]		: []
+		// Two-element array
+		["-1i0", "2u0", "1u0"] -> [0, "0u0"]		: []
+		["0i0", "2u0", "1u0"] 	-> [4, "4u0"]		: []
+		["1i0", "2u0", "1u0"] 	-> [0, "0u0"]		: []
+		["2i0", "2u0", "1u0"] 	-> [5, "5u0"]		: []
+		["3i0", "2u0", "1u0"] 	-> [0, "0u0"]		: []
+		// Three-element array
+		["-1i0", "3u0", "1u0"] -> [0, "0u0"]		: []
+		["0i0", "3u0", "1u0"] 	-> [4, "4u0"]		: []
+		["1i0", "3u0", "1u0"] 	-> [0, "0u0"]		: []
+		["2i0", "3u0", "1u0"] 	-> [5, "5u0"]		: []
+		["3i0", "3u0", "1u0"] 	-> [0, "0u0"]		: []
+		["4i0", "3u0", "1u0"] 	-> [6, "6u0"]		: []
+		["5i0", "3u0", "1u0"] 	-> [0, "0u0"]		: []
+	]
+								"echo =>1"
+								"jmp entry, 0"
+	"data_i8:" // Addr: 4
+								".bytes i0, 0"
+								".bytes i0, 2"
+								".bytes i0, 4"
+								".bytes i0, 6"
+	"data_i16:" // Addr: 8
+								".bytes i1, 0"
+								".bytes i1, 2"
+								".bytes i1, 4"
+								".bytes i1, 6"
+	"cmp_fns:"// Addr: 16
+								".bytes u0, fn_cmp_i8"
+								".bytes u0, fn_cmp_i16"
+	"data_addr:" // Addr: 18
+								".bytes u0, data_i8"
+								".bytes u0, data_i16"
+	"key_store:" // Addr: 20
+								".bytes u1, 0"
+	"cmp_fn_addr:"// Addr: 22
+								".bytes u1, 0"
+	"entry:"//addr:24
+								"echo =>entry_store_key, =>entry_after_base, =>"
+								"dup =>echo_size, =>sub_size"
+								// First store the key, so that we can get its address
+								"const u0, key_store"
+	"entry_store_key:"			"st"
+								// Choose comparison function and array based on size
+	"sub_size:"					"dec =>0"
+								"dup =>calc_cmp_fn, =>calc_data_addr"
+								"const u0, data_addr"
+								"ld u0, =>0"
+	"calc_data_addr:"			"add =>entry_after_key"
+	"entry_after_base:"			"echo =>entry_after_key"
+	"echo_size:"				"echo =>entry_after_key"
+								"const u0, cmp_fns"
+								"ld u0, =>0"
+	"calc_cmp_fn:"				"add =>entry_store_cmp_fn"
+								"const u0, cmp_fn_addr"
+	"entry_store_cmp_fn:"		"st"
+								// Call bsearch using key
+								"const u0, fn_bsearch"
+								"call call_args"
+														//cmp_fn from "stack"
+														// size from input
+														// nitems from input
+														// base
+	"entry_after_key:"			"const u0, key_store"	// key
+	"call_args:"
+								"echo =>entry_ret"
+								"ret entry_ret"
+	"entry_ret:"
+								".bytes u2, 0"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+
+	// We put this block here to allow the jmp targeting it to jump on non-zero
+	"greater_than:"//addr:36	// Set bottom to pivot+1
+								"jmp loop, greater_than_end"
+								// Increment pivot and set as bottom
+								"inc =>gt_dup_bot"
+								// Throw away pivot address and bottom
+								"cap =>0, =>0"
+								"cap =>0, =>0"
+								// Keep top
+								"dup =>gt_top_eq_bot, =>greater_than_end=>loop=>loop_dup_top"
+	"gt_dup_bot:"				"dup =>gt_top_eq_bot, =>greater_than_end=>loop=>loop_dup_bottom"
+	"gt_top_eq_bot:"			"sub =>gt_check_not_found"
+	"gt_check_not_found:"		"jmp fn_bsearch_ret_null, greater_than_end"
+	"greater_than_end:"
+
+	"fn_bsearch:"//addr:52
+								"echo =>loop_dup_key, =>loop_dup_base, =>"
+								"echo =>dup_len, =>dup_size"
+								"const u0, cmp_fn_addr"	// Load cmp_fn from "stack"
+								"ld u0, =>dup_cmp_fn"
+	"dup_len:"					"dup =>check_zero_len, =>loop_dup_top"
+	"dup_size:"					"dup =>check_zero_size, =>loop_dup_size"
+	"check_zero_len:"			"jmp fn_bsearch_ret_null, 1"
+	"check_zero_size:"			"jmp fn_bsearch_ret_null, 0"
+								"const u0, 0" // Initial bottom, addr: 68
+	"loop:"
+	"loop_dup_bottom:"			"dup =>add_top_bot, =>|=>bot_to_bot"
+	"loop_dup_top:"				"dup =>add_top_bot, =>|=>throw_away_top"
+	"loop_dup_size:"			"dup =>calc_pivot_offset, =>|=>less_than_end=>loop=>loop_dup_size"
+	"loop_dup_base:"			"dup =>calc_pivot_addr, =>|=>less_than_end=>loop=>loop_dup_base"
+	"loop_dup_key:"				"dup =>cmp_fn_args, =>|=>less_than_end=>loop=>loop_dup_key"
+								// Calculate the pivot by calculating the average of the top and bottom
+	"add_top_bot:"				"add =>calc_pivot"
+	"calc_pivot_idx:"			"shr =>loop_dup_pivot"
+	"loop_dup_pivot:"			"dup =>calc_pivot_offset, =>|=>pivot_to_top"
+	"calc_pivot_offset:"		"mul =>calc_pivot_addr"
+	"calc_pivot_addr:"			"add =>0"
+								"dup =>cmp_fn_args, =>|=>pivot_addr_throw_away"
+	"dup_cmp_fn:"				"dup =>0, =>|=>less_than_end=>loop=>dup_cmp_fn"
+								"call cmp_fn_args"
+	"cmp_fn_args:"//addr:96
+								"dup =>check_equal, =>is_positive"
+	"check_equal:"				"jmp equal, check_jmp_loc"
+								"const i0, 127" // Only adding positive to i8::MAX will overflow
+	"is_positive:"				"add High, =>check_positive"
+								// Will only jump on non-zero (i.e. true) since target is above
+	"check_positive:"			"jmp greater_than, check_jmp_loc"
+	"check_jmp_loc:"//addr:106
+
+								// If no jmp occurred, must be less than
+	"less_than:"				// Set top to pivot
+								"jmp loop, less_than_end"
+	"pivot_to_top:"				"dup =>lt_top_eq_bot, =>less_than_end=>loop=>loop_dup_top"
+	"pivot_addr_throw_away:"	"cap =>0, =>0"
+	"bot_to_bot:"				"dup =>lt_top_eq_bot, =>less_than_end=>loop=>loop_dup_bottom"
+	"throw_away_top:"			"cap =>0, =>0"
+								"cap =>0, =>0" //Padding to match greater_than
+	"lt_top_eq_bot:"			"sub =>lt_check_not_found"
+	"lt_check_not_found:"		"jmp fn_bsearch_ret_null, less_than_end"
+	"less_than_end:"//addr:122
+
+	"equal:"					// Pivot is what we are looking for, return its addr
+								"ret equal_end"
+								// Pivot index reaches here, throw it away
+								"cap =>0, =>0"
+								// Return pivot address
+	"equal_end:"
+
+	"fn_bsearch_ret_null:"
+								"ret fn_bsearch_end"
+								"cap =>fn_bsearch_end, =>15" // Throw away anything going to the return
+								"cap =>0, =>15" // Throw away anything going to the const
+								"const u0, 0"
+	"fn_bsearch_end:"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// bsearch comparison of i8 pointers
+	"fn_cmp_i8:"//132
+								"echo =>fn_cmp_i8_ld1, =>fn_cmp_i8_ld2"
+	"fn_cmp_i8_ld1:"			"ld i0, =>fn_cmp_i8_sub"
+	"fn_cmp_i8_ld2:"			"ld i0, =>fn_cmp_i8_sub"
+								"ret fn_cmp_i8_ret"
+	"fn_cmp_i8_sub:"			"sub =>0"
+	"fn_cmp_i8_ret:"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// bsearch comparison of i16 pointers
+	"fn_cmp_i16:"
+								"echo =>fn_cmp_i16_ld1, =>fn_cmp_i16_ld2"
+	"fn_cmp_i16_ld1:"			"ld i1, =>fn_cmp_i16_sub"
+	"fn_cmp_i16_ld2:"			"ld i1, =>fn_cmp_i16_sub"
+								"ret fn_cmp_i16_ret"
+	"fn_cmp_i16_sub:"			"sub =>0"
+	"fn_cmp_i16_ret:"
+
+
+
 }
