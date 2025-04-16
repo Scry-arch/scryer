@@ -5,8 +5,8 @@ use num_bigint::{BigInt, BigUint, Sign};
 use regex::Regex;
 use scry_asm::Assemble;
 use scry_sim::{
-	BlockedMemory, CallFrameState, ExecError, ExecState, Executor, MemError, Memory, Metric,
-	MetricReporter, OperandList, OperandState, Scalar, TrackReport, Value, ValueType,
+	Block, BlockedMemory, CallFrameState, ExecError, ExecState, Executor, MemError, Memory, Metric,
+	MetricReporter, OperandList, OperandState, Scalar, StackFrame, TrackReport, Value, ValueType,
 };
 use std::{collections::HashMap, time::Instant};
 
@@ -99,7 +99,7 @@ fn parse_input(input: &String) -> OperandState<usize>
 
 fn operand_to_value(
 	op: &OperandState<usize>,
-	reads: &Vec<(usize, usize, ValueType)>,
+	reads: &Vec<(bool, usize, usize, ValueType)>,
 	memory: &mut impl Memory,
 ) -> Result<Value, (MemError, usize)>
 {
@@ -108,9 +108,10 @@ fn operand_to_value(
 		OperandState::Ready(val) => Ok(val.clone()),
 		OperandState::MustRead(idx) =>
 		{
-			if let Some((addr, count, typ)) = reads.get(*idx)
+			if let Some((is_stack, addr, count, typ)) = reads.get(*idx)
 			{
 				assert!(*count == 1);
+				assert!(!is_stack);
 				let mut val = Value::new_nan_typed(typ.clone());
 				memory.read_data(*addr, &mut val, 1, &mut ())?;
 				Ok(val)
@@ -202,6 +203,14 @@ fn main()
 		op_queue.insert(0, OperandList::new(ops.remove(0), ops));
 	}
 
+	let stack_base = 1 << 16;
+	let base_stack = StackFrame {
+		block: Block {
+			address: stack_base,
+			size: 0,
+		},
+		primary_size: 0,
+	};
 	let original_state = ExecState {
 		address: 0,
 		frame: CallFrameState {
@@ -209,13 +218,16 @@ fn main()
 			branches: HashMap::new(),
 			op_queue,
 			reads: Vec::new(),
+			stack: base_stack.clone(),
 		},
 		frame_stack: vec![CallFrameState {
 			ret_addr: 0,
 			branches: HashMap::new(),
 			op_queue: HashMap::new(),
 			reads: Vec::new(),
+			stack: base_stack,
 		}],
+		stack_buffer: 2048,
 	};
 	let mut tracker = TrackReport::new();
 	if args.debug
@@ -270,8 +282,13 @@ fn main()
 						let val_str = value_to_string(val);
 						if let OperandState::MustRead(idx) = op
 						{
-							let addr = state.frame.reads[*idx].0;
-							print!("Load({:#X},{}), ", addr, val_str);
+							let (stack, addr, _, _) = state.frame.reads[*idx];
+							print!(
+								"Load({},{:#X},{}), ",
+								if stack { "Stack" } else { "Regular" },
+								addr,
+								val_str
+							);
 						}
 						else
 						{

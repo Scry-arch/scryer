@@ -76,7 +76,8 @@ fn test_program<const INS: usize>(
 	}
 	else
 	{
-		// print!("{}",std::str::from_utf8(assert.get_output().stderr.as_slice()).unwrap());
+		// print!("{}",std::str::from_utf8(assert.get_output().stderr.as_slice()).
+		// unwrap());
 		assert.success().stdout(
 			predicate::str::is_match(
 				"Returned Operands(.)*?\\n".to_owned()
@@ -630,17 +631,18 @@ test_program! {
 		QueuedReads			: 1
 		DataReads			: 0
 		DataReadBytes		: 0
-		InstructionReads	: 2
+		InstructionReads	: 3
 	];
 )]
 test_program! {
 	load_from_array [
-		["4u0"] 	-> [123, "Load(0x4,123u0)"]	: [ shared_metrics ]
-		["5u0"] 	-> [124, "Load(0x5,124u0)"]	: [ shared_metrics ]
-		["6u0"] 	-> [125, "Load(0x6,125u0)"]	: [ shared_metrics ]
-		["7u0"] 	-> [126, "Load(0x7,126u0)"]	: [ shared_metrics ]
+		["6u0"] 	-> [123, "Load(Regular,0x6,123u0)"]	: [ shared_metrics ]
+		["7u0"] 	-> [124, "Load(Regular,0x7,124u0)"]	: [ shared_metrics ]
+		["8u0"] 	-> [125, "Load(Regular,0x8,125u0)"]	: [ shared_metrics ]
+		["9u0"] 	-> [126, "Load(Regular,0x9,126u0)"]	: [ shared_metrics ]
 	]
-				"ld u0, =>ret_at"
+				"ld u0"
+				"echo =>ret_at"
 				"ret ret_at"
 	"ret_at:"
 	"load_from:"
@@ -671,7 +673,7 @@ test_program! {
 		["8u0"] 	-> [123, "123u0"]	: [ shared_metrics ]
 		["9u0"] 	-> [124, "124u0"]	: [ shared_metrics ]
 	]
-				"ld u0, =>0"
+				"ld u0"
 				"inc =>1"
 				"ret 0"
 	"data:"
@@ -695,18 +697,19 @@ test_program! {
 		QueuedReads			: 1
 		DataReads			: 0
 		DataReadBytes		: 0
-		ReorderedOperands	: 8
-		InstructionReads	: 17
+		ReorderedOperands	: 9
+		InstructionReads	: 18
 	];
 )]
 test_program! {
 	load_before_store [
-		["6u0"] 	-> [0, "Load(0x6,0u0)"]	: [ shared_metrics([1]) ]
-		["7u1"] 	-> [1, "Load(0x7,1u0)"]	: [ shared_metrics([2]) ]
-		["8u2"] 	-> [2, "Load(0x8,2u0)"]	: [ shared_metrics([4]) ]
-		["9u3"] 	-> [3, "Load(0x9,3u0)"]	: [ shared_metrics([8]) ]
+		["8u0"] 	-> [0, "Load(Regular,0x8,0u0)"]	: [ shared_metrics([1]) ]
+		["9u1"] 	-> [1, "Load(Regular,0x9,1u0)"]	: [ shared_metrics([2]) ]
+		["10u2"] 	-> [2, "Load(Regular,0xA,2u0)"]	: [ shared_metrics([4]) ]
+		["11u3"] 	-> [3, "Load(Regular,0xB,3u0)"]	: [ shared_metrics([8]) ]
 	]
-				"ld u0, =>data=>init_data=>ret_at"
+				"ld u0"
+				"echo =>data=>init_data=>ret_at"
 				"ret ret_at"
 				"jmp init_data, 0"
 	"data:"
@@ -753,10 +756,10 @@ test_program! {
 	[
 		name [load_from_absolute_address]
 		tests [
-			["0u0"] 	-> [45, "Load(0x16,45i1)"]	: [ shared_metrics ]
-			["1u0"] 	-> [46, "Load(0x18,46i1)"]	: [ shared_metrics ]
-			["2u0"] 	-> [47, "Load(0x1A,47i1)"]	: [ shared_metrics ]
-			["3u0"] 	-> [48, "Load(0x1C,48i1)"]	: [ shared_metrics ]
+			["0u0"] 	-> [45, "Load(Regular,0x16,45i1)"]	: [ shared_metrics ]
+			["1u0"] 	-> [46, "Load(Regular,0x18,46i1)"]	: [ shared_metrics ]
+			["2u0"] 	-> [47, "Load(Regular,0x1A,47i1)"]	: [ shared_metrics ]
+			["3u0"] 	-> [48, "Load(Regular,0x1C,48i1)"]	: [ shared_metrics ]
 		]
 		addr_type ["u0"]
 		addr_val ["22"]
@@ -764,10 +767,10 @@ test_program! {
 	[
 		name [load_from_label_address]
 		tests [
-			["0u0"] 	-> [45, "Load(0x16,45i1)"]	: [ shared_metrics ]
-			["2u0"] 	-> [47, "Load(0x1A,47i1)"]	: [ shared_metrics ]
-			["5u0"] 	-> [50, "Load(0x20,50i1)"]	: [ shared_metrics ]
-			["7u0"] 	-> [52, "Load(0x24,52i1)"]	: [ shared_metrics ]
+			["0u0"] 	-> [45, "Load(Regular,0x16,45i1)"]	: [ shared_metrics ]
+			["2u0"] 	-> [47, "Load(Regular,0x1A,47i1)"]	: [ shared_metrics ]
+			["5u0"] 	-> [50, "Load(Regular,0x20,50i1)"]	: [ shared_metrics ]
+			["7u0"] 	-> [52, "Load(Regular,0x24,52i1)"]	: [ shared_metrics ]
 		]
 		addr_type ["u0"]
 		addr_val ["data"]
@@ -775,21 +778,21 @@ test_program! {
 	[
 		name [load_from_relative_address]
 		tests [
-			["1i0"] 	-> [46, "Load(0x18,46i1)"]	: [ shared_metrics ]
-			["3i0"] 	-> [48, "Load(0x1C,48i1)"]	: [ shared_metrics ]
-			["5i0"] 	-> [50, "Load(0x20,50i1)"]	: [ shared_metrics ]
-			["7i0"] 	-> [52, "Load(0x24,52i1)"]	: [ shared_metrics ]
+			["1i0"] 	-> [46, "Load(Regular,0x18,46i1)"]	: [ shared_metrics ]
+			["3i0"] 	-> [48, "Load(Regular,0x1C,48i1)"]	: [ shared_metrics ]
+			["5i0"] 	-> [50, "Load(Regular,0x20,50i1)"]	: [ shared_metrics ]
+			["7i0"] 	-> [52, "Load(Regular,0x24,52i1)"]	: [ shared_metrics ]
 		]
 		addr_type ["i0"]
-		addr_val ["14"]
+		addr_val ["12"]
 	]
 	[
 		name [load_from_relative_labels]
 		tests [
-			["0i0"] 	-> [45, "Load(0x16,45i1)"]	: [ shared_metrics ]
-			["2i0"] 	-> [47, "Load(0x1A,47i1)"]	: [ shared_metrics ]
-			["4i0"] 	-> [49, "Load(0x1E,49i1)"]	: [ shared_metrics ]
-			["6i0"] 	-> [51, "Load(0x22,51i1)"]	: [ shared_metrics ]
+			["0i0"] 	-> [45, "Load(Regular,0x16,45i1)"]	: [ shared_metrics ]
+			["2i0"] 	-> [47, "Load(Regular,0x1A,47i1)"]	: [ shared_metrics ]
+			["4i0"] 	-> [49, "Load(Regular,0x1E,49i1)"]	: [ shared_metrics ]
+			["6i0"] 	-> [51, "Load(Regular,0x22,51i1)"]	: [ shared_metrics ]
 		]
 		addr_type ["i0"]
 		addr_val ["load=>data"]
@@ -802,9 +805,9 @@ test_program! {
 				"dup =>0, =>0"
 				"add =>0"
 				"const " addr_type "," addr_val
-				"add =>0"
-	"load:"		"ld i1, =>1"
-				"ret 0"
+				"add =>load"
+				"ret 1"
+	"load:"		"ld i1"
 				".bytes i1, -1"
 				".bytes i1, -1"
 				".bytes i1, -1"
@@ -841,13 +844,13 @@ test_program! {
 )]
 test_program! {
 	load_from_relative_indexed [
-		["0u0"] 	-> [45, "Load(0xC,45i1)"]	: [ shared_metrics ]
-		["2u0"] 	-> [46, "Load(0x10,46i1)"]	: [ shared_metrics ]
-		["5u0"] 	-> [47, "Load(0x16,47i1)"]	: [ shared_metrics ]
-		["7u0"] 	-> [48, "Load(0x1A,48i1)"]	: [ shared_metrics ]
+		["0u0"] 	-> [45, "Load(Regular,0xC,45i1)"]	: [ shared_metrics ]
+		["2u0"] 	-> [46, "Load(Regular,0x10,46i1)"]	: [ shared_metrics ]
+		["5u0"] 	-> [47, "Load(Regular,0x16,47i1)"]	: [ shared_metrics ]
+		["7u0"] 	-> [48, "Load(Regular,0x1A,48i1)"]	: [ shared_metrics ]
 	]
 				// Jump past data
-				"echo =>jmp_at=>start"
+				"echo =>jmp_at=>start=>1"
 				"jmp start, 0"
 	"jmp_at:"
 				".bytes i1, -1"
@@ -868,9 +871,9 @@ test_program! {
 				".bytes i1, -1"
 				".bytes i1, -1"
 				".bytes i1, -1"
-	"start:"	"const i0, load=>data"
-	"load:"		"ld i1, =>1"
-				"ret 0"
+	"start:"	"ret 2"
+				"const i0, load=>data"
+	"load:"		"ld i1"
 }
 
 #[duplicate_item(
@@ -910,7 +913,7 @@ test_program! {
 	"dec_size:"		"dec =>0"
 					"dup =>load_next, =>loop_end=>loop_start=>dec_size, =>"
 	"loop_cond:"	"jmp loop_start, loop_end"
-	"load_next:"	"ld u0, =>0"
+	"load_next:"	"ld u0"
 					"dup =>compare, =>pre_pick"
 	"addr_repeat:"	"dup =>loop_end=>loop_start=>load_next,"
 						 "=>loop_end=>loop_start=>addr_repeat"
@@ -944,15 +947,15 @@ test_program! {
 test_program! {
 	memcpy [
 		["255u0", "255u0", "0u0"]	->
-			[0, "Load(0x44,0i0), Load(0x45,0i0), Load(0x46,0i0), Load(0x47,0i0)"] : []
-		["67u0", "68u0", "1u0"]		->
-			[7, "Load(0x44,7i0), Load(0x45,0i0), Load(0x46,0i0), Load(0x47,0i0)"] : []
-		["66u0", "69u0", "2u0"]		->
-			[0, "Load(0x44,0i0), Load(0x45,5i0), Load(0x46,7i0), Load(0x47,0i0)"] : []
-		["65u0", "69u0", "3u0"]		->
-			[0, "Load(0x44,0i0), Load(0x45,3i0), Load(0x46,5i0), Load(0x47,7i0)"] : []
-		["64u0", "68u0", "4u0"]		->
-			[2, "Load(0x44,2i0), Load(0x45,3i0), Load(0x46,5i0), Load(0x47,7i0)"] : []
+			[0, "Load(Regular,0x4C,0i0), Load(Regular,0x4D,0i0), Load(Regular,0x4E,0i0), Load(Regular,0x4F,0i0)"] : []
+		["75u0", "76u0", "1u0"]		->
+			[7, "Load(Regular,0x4C,7i0), Load(Regular,0x4D,0i0), Load(Regular,0x4E,0i0), Load(Regular,0x4F,0i0)"] : []
+		["74u0", "77u0", "2u0"]		->
+			[0, "Load(Regular,0x4C,0i0), Load(Regular,0x4D,5i0), Load(Regular,0x4E,7i0), Load(Regular,0x4F,0i0)"] : []
+		["73u0", "77u0", "3u0"]		->
+			[0, "Load(Regular,0x4C,0i0), Load(Regular,0x4D,3i0), Load(Regular,0x4E,5i0), Load(Regular,0x4F,7i0)"] : []
+		["72u0", "76u0", "4u0"]		->
+			[2, "Load(Regular,0x4C,2i0), Load(Regular,0x4D,3i0), Load(Regular,0x4E,5i0), Load(Regular,0x4F,7i0)"] : []
 	]
 						// Takes source address, destination address and length.
 						// Copies the source array with given length to the destination.
@@ -964,7 +967,8 @@ test_program! {
 	"dup_source:"		"dup =>load_next, =>inc_source"
 
 	"loop_start:"
-	"load_next:"		"ld u0, =>store_copy"
+	"load_next:"		"ld u0"
+						"echo =>store_copy"
 	"dec_count:"		"dec =>0"
 						"dup =>loop_cond, =>loop_end=>loop_start=>dec_count"
 	"loop_cond:"		"jmp loop_start, loop_end"
@@ -987,15 +991,18 @@ test_program! {
 						"cap =>0, =>0"
 
 						"const u0, dst1"
-						"ld i0, =>return"
+						"ld i0"
+						"echo =>return"
 						"const u0, dst2"
-						"ld i0, =>return"
+						"ld i0"
+						"echo =>return"
 						"const u0, dst3"
-						"ld i0, =>return"
+						"ld i0"
+						"echo =>return"
 						"const u0, dst4"
-						"ld i0, =>return"
+						"ld i0"
 	"return:"
-	// Address: 64
+	// Address: 72
 	"src:"
 						".bytes i0, 2"
 						".bytes i0, 3"
@@ -1010,12 +1017,12 @@ test_program! {
 
 test_program! {
 	strcpy [
-		["57u0", "54u0"]	->
-			[255, "Load(0x38,255u0), Load(0x39,223u0), Load(0x3A,0u0), Load(0x3B,255u0)"] : []
-		["57u0", "53u0"]	->
-			[255, "Load(0x38,255u0), Load(0x39,211u0), Load(0x3A,223u0), Load(0x3B,0u0)"] : []
-		["56u0", "52u0"]	->
-			[199, "Load(0x38,199u0), Load(0x39,211u0), Load(0x3A,223u0), Load(0x3B,0u0)"] : []
+		["63u0", "60u0"]	->
+			[255, "Load(Regular,0x3E,255u0), Load(Regular,0x3F,223u0), Load(Regular,0x40,0u0), Load(Regular,0x41,255u0)"] : []
+		["63u0", "59u0"]	->
+			[255, "Load(Regular,0x3E,255u0), Load(Regular,0x3F,211u0), Load(Regular,0x40,223u0), Load(Regular,0x41,0u0)"] : []
+		["62u0", "58u0"]	->
+			[199, "Load(Regular,0x3E,199u0), Load(Regular,0x3F,211u0), Load(Regular,0x40,223u0), Load(Regular,0x41,0u0)"] : []
 	]
 					// Takes destination address and source address.
 					// Copies the string from source to destination including final null character
@@ -1025,7 +1032,7 @@ test_program! {
 
 	"loop_start:"
 	"dup_src:"			"dup =>load, =>inc_src"
-	"load:"				"ld u0, =>0"
+	"load:"				"ld u0"
 						"dup =>loop_cond, =>store"
 	"loop_cond:"		"jmp loop_start, loop_end"
 	"dup_dst:"			"dup =>store, =>0"
@@ -1043,15 +1050,18 @@ test_program! {
 						"cap =>0, =>0"
 
 						"const u0, dst1"
-						"ld u0, =>return_at"
+						"ld u0"
+						"echo =>return_at"
 						"const u0, dst2"
-						"ld u0, =>return_at"
+						"ld u0"
+						"echo =>return_at"
 						"const u0, dst3"
-						"ld u0, =>return_at"
+						"ld u0"
+						"echo =>return_at"
 						"const u0, dst4"
-						"ld u0, =>return_at"
+						"ld u0"
 	"return_at:"
-	// Address: 52
+	// Address: 58
 	"src:"
 						".bytes u0, 199"
 						".bytes u0, 211"
@@ -1176,9 +1186,10 @@ test_program! {
 	// bsearch comparison of i8 pointers
 	"fn_cmp_i8:"
 								"echo =>fn_cmp_i8_ld1, =>fn_cmp_i8_ld2"
-	"fn_cmp_i8_ld1:"			"ld i0, =>fn_cmp_i8_sub"
-	"fn_cmp_i8_ld2:"			"ld i0, =>fn_cmp_i8_sub"
 								"ret fn_cmp_i8_ret"
+	"fn_cmp_i8_ld1:"			"ld i0"
+								"echo =>fn_cmp_i8_sub"
+	"fn_cmp_i8_ld2:"			"ld i0"
 	"fn_cmp_i8_sub:"			"sub =>0"
 	"fn_cmp_i8_ret:"
 
@@ -1244,12 +1255,12 @@ test_program! {
 	"sub_size:"					"dec =>0"
 								"dup =>calc_cmp_fn, =>calc_data_addr"
 								"const u0, data_addr"
-								"ld u0, =>0"
+								"ld u0"
 	"calc_data_addr:"			"add =>entry_after_key"
 	"entry_after_base:"			"echo =>entry_after_key"
 	"echo_size:"				"echo =>entry_after_key"
 								"const u0, cmp_fns"
-								"ld u0, =>0"
+								"ld u0"
 	"calc_cmp_fn:"				"add =>entry_store_cmp_fn"
 								"const u0, cmp_fn_addr"
 	"entry_store_cmp_fn:"		"st"
@@ -1287,7 +1298,8 @@ test_program! {
 								"echo =>loop_dup_key, =>loop_dup_base, =>"
 								"echo =>dup_len, =>dup_size"
 								"const u0, cmp_fn_addr"	// Load cmp_fn from "stack"
-								"ld u0, =>dup_cmp_fn"
+								"ld u0"
+								"echo =>dup_cmp_fn"
 	"dup_len:"					"dup =>check_zero_len, =>loop_dup_top"
 	"dup_size:"					"dup =>check_zero_size, =>loop_dup_size"
 	"check_zero_len:"			"jmp fn_bsearch_ret_null, 1"
@@ -1346,21 +1358,20 @@ test_program! {
 	// bsearch comparison of i8 pointers
 	"fn_cmp_i8:"//132
 								"echo =>fn_cmp_i8_ld1, =>fn_cmp_i8_ld2"
-	"fn_cmp_i8_ld1:"			"ld i0, =>fn_cmp_i8_sub"
-	"fn_cmp_i8_ld2:"			"ld i0, =>fn_cmp_i8_sub"
 								"ret fn_cmp_i8_ret"
+	"fn_cmp_i8_ld1:"			"ld i0"
+								"echo =>fn_cmp_i8_sub"
+	"fn_cmp_i8_ld2:"			"ld i0"
 	"fn_cmp_i8_sub:"			"sub =>0"
 	"fn_cmp_i8_ret:"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// bsearch comparison of i16 pointers
 	"fn_cmp_i16:"
 								"echo =>fn_cmp_i16_ld1, =>fn_cmp_i16_ld2"
-	"fn_cmp_i16_ld1:"			"ld i1, =>fn_cmp_i16_sub"
-	"fn_cmp_i16_ld2:"			"ld i1, =>fn_cmp_i16_sub"
 								"ret fn_cmp_i16_ret"
+	"fn_cmp_i16_ld1:"			"ld i1"
+								"echo =>fn_cmp_i16_sub"
+	"fn_cmp_i16_ld2:"			"ld i1"
 	"fn_cmp_i16_sub:"			"sub =>0"
 	"fn_cmp_i16_ret:"
-
-
-
 }
