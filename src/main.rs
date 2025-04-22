@@ -147,27 +147,7 @@ fn value_to_string(val: Value) -> String
 fn print_metrics(tracker: &TrackReport)
 {
 	println!("\n----------  Simulation Metrics  ----------");
-	use scry_sim::Metric::*;
-	for metric in [
-		IssuedBranches,
-		IssuedCalls,
-		IssuedReturns,
-		TriggeredBranches,
-		TriggeredCalls,
-		TriggeredReturns,
-		ConsumedOperands,
-		ConsumedBytes,
-		QueuedValues,
-		QueuedValueBytes,
-		QueuedReads,
-		ReorderedOperands,
-		InstructionReads,
-		DataReads,
-		DataReadBytes,
-		DataBytesWritten,
-		UnalignedReads,
-		UnalignedWrites,
-	]
+	for metric in Metric::all()
 	{
 		let metric_val = tracker.get_stat(metric);
 		println!("{:?}: {}", metric, metric_val);
@@ -204,6 +184,7 @@ fn main()
 	}
 
 	let stack_base = 1 << 16;
+	let stack_buffer = 1 << 12;
 	let base_stack = StackFrame {
 		block: Block {
 			address: stack_base,
@@ -227,7 +208,7 @@ fn main()
 			reads: Vec::new(),
 			stack: base_stack,
 		}],
-		stack_buffer: 2048,
+		stack_buffer,
 	};
 	let mut tracker = TrackReport::new();
 	if args.debug
@@ -235,6 +216,7 @@ fn main()
 		dbg!(&original_state);
 	}
 	let mut memory = BlockedMemory::new(program.into_iter(), 0);
+	memory.add_block((0..stack_buffer).map(|_| 0), stack_base);
 	let mut res =
 		Executor::<BlockedMemory, _>::from_state(&original_state, &mut memory).step(&mut tracker);
 	while res.is_ok()

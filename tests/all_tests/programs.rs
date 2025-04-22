@@ -3,7 +3,7 @@ use assert_cmd::Command;
 use duplicate::duplicate_item;
 use predicates::prelude::predicate;
 use scry_asm::Assemble;
-use scry_sim::{Metric::*, MetricReporter, TrackReport};
+use scry_sim::{Metric, Metric::*, MetricReporter, TrackReport};
 use std::{io::Write, iter::once, time::Duration};
 
 /// Tests that the given assembly program can be simulated with the given inputs
@@ -98,26 +98,7 @@ fn test_program<const INS: usize>(
 	{
 		let mut regex = r"Simulation Metrics(.)*?\n(.|\n)*?".to_owned();
 
-		for metric in [
-			IssuedBranches,
-			IssuedCalls,
-			IssuedReturns,
-			TriggeredBranches,
-			TriggeredCalls,
-			TriggeredReturns,
-			ConsumedOperands,
-			ConsumedBytes,
-			QueuedValues,
-			QueuedValueBytes,
-			QueuedReads,
-			ReorderedOperands,
-			InstructionReads,
-			DataReads,
-			DataReadBytes,
-			DataBytesWritten,
-			UnalignedReads,
-			UnalignedWrites,
-		]
+		for metric in Metric::all()
 		{
 			let metric_val = expected_metrics.get_stat(metric);
 			if metric_val != 0
@@ -874,6 +855,46 @@ test_program! {
 	"start:"	"ret 2"
 				"const i0, load=>data"
 	"load:"		"ld i1"
+}
+
+#[duplicate_item(
+	shared_metrics(len) [
+		IssuedReturns		: 1
+		TriggeredReturns	: 1
+		ConsumedOperands	: 3
+		ConsumedBytes		: 8 + (len*2)
+		QueuedValues		: 2
+		QueuedValueBytes	: 8 + len
+		QueuedReads			: 1
+		DataReads			: 1
+		DataReadBytes		: 8
+		StackReads			: 1
+		StackReadBytes		: 8
+		StackWrites			: 1
+		StackWriteBytes		: len
+		StackReserveTotal	: 1
+		StackReserveTotalBytes: 64
+		StackFreeTotal		: 1
+		StackFreeTotalBytes	: 64
+		InstructionReads	: 7
+	];
+)]
+test_program! {
+	store_and_load_from_stack [
+		["0u0"] 	-> [2, "2u3"]	: [ shared_metrics([1]) ]
+		["12u1"] 	-> [14, "14u3"]	: [ shared_metrics([2]) ]
+		["23u2"] 	-> [25, "25u3"]	: [ shared_metrics([4]) ]
+		["45u3"] 	-> [47, "47u3"]	: [ shared_metrics([8]) ]
+	]
+				"inc =>store"
+				"rsrv Secondary, 64"
+	"store:"
+				"st [0]"
+				"ret end"
+				"ld u3 [0]"
+				"inc =>end"
+				"free Secondary, 64"
+	"end:"
 }
 
 #[duplicate_item(
