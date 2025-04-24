@@ -190,7 +190,7 @@ fn main()
 			address: stack_base,
 			size: 0,
 		},
-		primary_size: 0,
+		base_size: 0,
 	};
 	let original_state = ExecState {
 		address: 0,

@@ -887,14 +887,64 @@ test_program! {
 		["45u3"] 	-> [47, "47u3"]	: [ shared_metrics([8]) ]
 	]
 				"inc =>store"
-				"rsrv Secondary, 64"
+				"rsrv 64"
 	"store:"
 				"st [0]"
 				"ret end"
 				"ld u3 [0]"
 				"inc =>end"
-				"free Secondary, 64"
+				"free 64"
 	"end:"
+}
+
+#[duplicate_item(
+	shared_metrics(len) [
+		IssuedReturns		: 2
+		TriggeredReturns	: 2
+		ConsumedOperands	: 5
+		ConsumedBytes		: 20
+		QueuedValues		: 5
+		QueuedValueBytes	: 17
+		QueuedReads			: 1
+		DataReads			: 1
+		DataReadBytes		: 4
+		StackReads			: 1
+		StackReadBytes		: 4
+		StackWrites			: 1
+		StackWriteBytes		: 4
+		StackReserveTotal	: 1
+		StackReserveTotalBytes: 16
+		StackReserveBase	: 1
+		StackReserveBaseBytes: 8
+		StackFreeTotal		: 1
+		StackFreeTotalBytes	: 16
+		StackFreeBase		: 0
+		StackFreeBaseBytes	: 8
+		InstructionReads	: 12
+	];
+)]
+test_program! {
+	pass_on_stack [
+		["123u2"] 	-> [126, "126u2"]	: [  ]
+		["75u2"] 	-> [78, "78u2"]		: [  ]
+		["46u2"] 	-> [49, "49u2"]		: [  ]
+	]
+				"inc =>store"
+				"rsrv 16"
+				"rsrv 8, Base"
+	"store:"
+				"st [2]"
+				"const u0, func1"
+				"call 0"
+				"inc =>end"
+				"ret end"
+				"free 16"
+	"end:"
+	"func1:"
+				"ret func1_end"
+				"ld u2 [0]"
+				"inc =>func1_end"
+	"func1_end:"
 }
 
 #[duplicate_item(
