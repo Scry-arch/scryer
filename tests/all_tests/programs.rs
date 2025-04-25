@@ -898,13 +898,15 @@ test_program! {
 }
 
 #[duplicate_item(
-	shared_metrics(len) [
+	shared_metrics [
+		IssuedCalls			: 1
+		TriggeredCalls		: 1
 		IssuedReturns		: 2
 		TriggeredReturns	: 2
 		ConsumedOperands	: 5
-		ConsumedBytes		: 20
-		QueuedValues		: 5
-		QueuedValueBytes	: 17
+		ConsumedBytes		: 17
+		QueuedValues		: 4
+		QueuedValueBytes	: 13
 		QueuedReads			: 1
 		DataReads			: 1
 		DataReadBytes		: 4
@@ -925,9 +927,9 @@ test_program! {
 )]
 test_program! {
 	pass_on_stack [
-		["123u2"] 	-> [126, "126u2"]	: [  ]
-		["75u2"] 	-> [78, "78u2"]		: [  ]
-		["46u2"] 	-> [49, "49u2"]		: [  ]
+		["123u2"] 	-> [126, "126u2"]	: [ shared_metrics ]
+		["75u2"] 	-> [78, "78u2"]		: [ shared_metrics ]
+		["46u2"] 	-> [49, "49u2"]		: [ shared_metrics ]
 	]
 				"inc =>store"
 				"rsrv 16"
@@ -944,6 +946,57 @@ test_program! {
 				"ret func1_end"
 				"ld u2 [0]"
 				"inc =>func1_end"
+	"func1_end:"
+}
+
+#[duplicate_item(
+	shared_metrics [
+		IssuedCalls			: 1
+		TriggeredCalls		: 1
+		IssuedReturns		: 2
+		TriggeredReturns	: 2
+		ConsumedOperands	: 5
+		ConsumedBytes		: 9
+		QueuedValues		: 4
+		QueuedValueBytes	: 7
+		QueuedReads			: 1
+		DataReads			: 1
+		DataReadBytes		: 2
+		StackReads			: 1
+		StackReadBytes		: 2
+		StackWrites			: 1
+		StackWriteBytes		: 2
+		StackReserveTotal	: 0
+		StackReserveTotalBytes: 2
+		StackReserveBase	: 1
+		StackReserveBaseBytes: 2
+		StackFreeTotal		: 1
+		StackFreeTotalBytes	: 2
+		StackFreeBase		: 0
+		StackFreeBaseBytes	: 0
+		InstructionReads	: 11
+	];
+)]
+test_program! {
+	return_on_stack [
+		["123u1"] 	-> [126, "126u1"]	: [ shared_metrics ]
+		["75u1"] 	-> [78, "78u1"]		: [ shared_metrics ]
+		["46u1"] 	-> [49, "49u1"]		: [ shared_metrics ]
+	]
+				"inc =>call_args"
+				"const u0, func1"
+				"call 0"
+	"call_args:"
+				"ld u1 [0]"
+				"inc =>end"
+				"ret end"
+				"free 2"
+	"end:"
+	"func1:"
+				"inc =>store"
+				"rsrv 2, Base"
+	"store:"	"st [0]"
+				"ret func1_end"
 	"func1_end:"
 }
 
@@ -1314,9 +1367,7 @@ test_program! {
 								".bytes u0, data_i16"
 	"key_store:" // Addr: 20
 								".bytes u1, 0"
-	"cmp_fn_addr:"// Addr: 22
-								".bytes u1, 0"
-	"entry:"//addr:24
+	"entry:"//addr:22
 								"echo =>entry_store_key, =>entry_after_base, =>"
 								"dup =>echo_size, =>sub_size"
 								// First store the key, so that we can get its address
@@ -1333,12 +1384,12 @@ test_program! {
 								"const u0, cmp_fns"
 								"ld u0"
 	"calc_cmp_fn:"				"add =>entry_store_cmp_fn"
-								"const u0, cmp_fn_addr"
-	"entry_store_cmp_fn:"		"st"
+								"rsrv 2"
+	"entry_store_cmp_fn:"		"st [0]"
 								// Call bsearch using key
 								"const u0, fn_bsearch"
 								"call call_args"
-														//cmp_fn from "stack"
+														//cmp_fn from stack
 														// size from input
 														// nitems from input
 														// base
@@ -1351,7 +1402,7 @@ test_program! {
 	/////////////////////////////////////////////////////////////////////////////////////////////
 
 	// We put this block here to allow the jmp targeting it to jump on non-zero
-	"greater_than:"//addr:36	// Set bottom to pivot+1
+	"greater_than:"//addr:34	// Set bottom to pivot+1
 								"jmp loop, greater_than_end"
 								// Increment pivot and set as bottom
 								"inc =>gt_dup_bot"
@@ -1365,11 +1416,10 @@ test_program! {
 	"gt_check_not_found:"		"jmp fn_bsearch_ret_null, greater_than_end"
 	"greater_than_end:"
 
-	"fn_bsearch:"//addr:52
+	"fn_bsearch:"//addr:50
 								"echo =>loop_dup_key, =>loop_dup_base, =>"
 								"echo =>dup_len, =>dup_size"
-								"const u0, cmp_fn_addr"	// Load cmp_fn from "stack"
-								"ld u0"
+								"ld u1 [0]"// Load cmp_fn from stack
 								"echo =>dup_cmp_fn"
 	"dup_len:"					"dup =>check_zero_len, =>loop_dup_top"
 	"dup_size:"					"dup =>check_zero_size, =>loop_dup_size"
@@ -1391,14 +1441,14 @@ test_program! {
 								"dup =>cmp_fn_args, =>|=>pivot_addr_throw_away"
 	"dup_cmp_fn:"				"dup =>0, =>|=>less_than_end=>loop=>dup_cmp_fn"
 								"call cmp_fn_args"
-	"cmp_fn_args:"//addr:96
+	"cmp_fn_args:"//addr:94
 								"dup =>check_equal, =>is_positive"
 	"check_equal:"				"jmp equal, check_jmp_loc"
 								"const i0, 127" // Only adding positive to i8::MAX will overflow
 	"is_positive:"				"add High, =>check_positive"
 								// Will only jump on non-zero (i.e. true) since target is above
 	"check_positive:"			"jmp greater_than, check_jmp_loc"
-	"check_jmp_loc:"//addr:106
+	"check_jmp_loc:"//addr:104
 
 								// If no jmp occurred, must be less than
 	"less_than:"				// Set top to pivot
@@ -1410,7 +1460,7 @@ test_program! {
 								"cap =>0, =>0" //Padding to match greater_than
 	"lt_top_eq_bot:"			"sub =>lt_check_not_found"
 	"lt_check_not_found:"		"jmp fn_bsearch_ret_null, less_than_end"
-	"less_than_end:"//addr:122
+	"less_than_end:"//addr:120
 
 	"equal:"					// Pivot is what we are looking for, return its addr
 								"ret equal_end"
@@ -1427,7 +1477,7 @@ test_program! {
 	"fn_bsearch_end:"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// bsearch comparison of i8 pointers
-	"fn_cmp_i8:"//132
+	"fn_cmp_i8:"//130
 								"echo =>fn_cmp_i8_ld1, =>fn_cmp_i8_ld2"
 								"ret fn_cmp_i8_ret"
 	"fn_cmp_i8_ld1:"			"ld i0"
