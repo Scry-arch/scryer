@@ -1,6 +1,6 @@
 use crate::TEMPORARY_DIR;
 use assert_cmd::Command;
-use duplicate::duplicate_item;
+use duplicate::{duplicate_item, substitute_item};
 use predicates::prelude::predicate;
 use scry_asm::Assemble;
 use scry_sim::{Metric, Metric::*, MetricReporter, TrackReport};
@@ -210,7 +210,7 @@ macro_rules! test_program {
 	) => {};
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(operand_bytes) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -233,7 +233,7 @@ test_program! {
 	"ret_at:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(operand_bytes) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -257,7 +257,7 @@ test_program! {
 	"ret_at:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -292,7 +292,7 @@ test_program! {
 	"ret_at:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(operand_bytes) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -316,7 +316,7 @@ test_program! {
 					"ret 0"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(operand_bytes) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -342,7 +342,7 @@ test_program! {
 	"ret_at:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(operand_bytes) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -366,7 +366,7 @@ test_program! {
 	"ret_at:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(operand_bytes) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -438,7 +438,7 @@ test_program! {
 	"ret_at:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(operand_bytes) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -471,7 +471,7 @@ test_program! {
 	"ret_at:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(operand_bytes) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -501,7 +501,7 @@ test_program! {
 	"jmp_at:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(operand_bytes, branches) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -532,7 +532,7 @@ test_program! {
 				"const u0, 1"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(extra_loops) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -601,7 +601,7 @@ test_program! {
 	"early_ret_trig:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -633,7 +633,7 @@ test_program! {
 				".bytes u0, 126"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -665,7 +665,7 @@ test_program! {
 
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(addr_size) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -718,7 +718,7 @@ test_program! {
 	"ret_at:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -806,7 +806,7 @@ test_program! {
 
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics [
 		IssuedReturns		: 1
 		IssuedBranches		: 1
@@ -857,7 +857,7 @@ test_program! {
 	"load:"		"ld i1"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(len) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
@@ -897,7 +897,7 @@ test_program! {
 	"end:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics [
 		IssuedCalls			: 1
 		TriggeredCalls		: 1
@@ -949,7 +949,7 @@ test_program! {
 	"func1_end:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics [
 		IssuedCalls			: 1
 		TriggeredCalls		: 1
@@ -1000,7 +1000,7 @@ test_program! {
 	"func1_end:"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics(len) [
 		IssuedBranches		: len-1
 	    IssuedReturns		: 1
@@ -1198,7 +1198,7 @@ test_program! {
 	"dst4:"				".bytes u0, 255"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics [
 		IssuedBranches		: 0
 		IssuedReturns		: 2
@@ -1240,7 +1240,7 @@ test_program! {
 					"ret 0"
 }
 
-#[duplicate_item(
+#[substitute_item(
 	shared_metrics [
 		IssuedBranches		: 0
 		IssuedReturns		: 2
