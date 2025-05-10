@@ -283,7 +283,7 @@ fn main()
 				}
 			}
 			// Failure
-			res = Err(ExecError::Err);
+			res = Err(ExecError::Err("No operands returned by simulation.".into()));
 			continue;
 		}
 

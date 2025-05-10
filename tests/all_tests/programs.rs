@@ -228,7 +228,7 @@ test_program! {
 		["2u2"] 	-> [3, "3u2"]	: [ shared_metrics([4]) ]
 		["255u3"] 	-> [0, "256u3"]	: [ shared_metrics([8]) ]
 	]
-				"inc =>ret_at"
+				"add Low, =>ret_at"
 				"ret ret_at"
 	"ret_at:"
 }
@@ -252,7 +252,7 @@ test_program! {
 		["2i0", "-22i0"]	-> [237, "-19i0"]	: [ shared_metrics([1]) ]
 	]
 				"add =>0"
-				"inc =>ret_at"
+				"add Low, =>ret_at"
 				"ret ret_at"
 	"ret_at:"
 }
@@ -285,7 +285,7 @@ test_program! {
 )]
 test_program! {
 	test_name [ metrics	]
-				"inc =>add_to"
+				"add Low, =>add_to"
 				"ret ret_at"
 	"add_to:"	"const" typ "," constant
 				"add =>ret_at"
@@ -432,7 +432,7 @@ test_program! {
 				"cap =>0, =>0"
 
 				"ret ret_at"
-	"to_add:"		"dec =>ret_at"
+	"to_add:"	"sub Low, =>ret_at"
 				"cap =>0, =>0"
 				"cap =>0, =>0"
 	"ret_at:"
@@ -461,7 +461,7 @@ test_program! {
 				"echo =>inc1, =>after_inc1=>add1"
 				"ret ret_at"
 				"jmp add1, after_inc1"
-	"inc1:"		"inc =>after_inc1=>add1"
+	"inc1:"		"add Low, =>after_inc1=>add1"
 	"after_inc1:"
 				"cap =>0, =>0"
 				"cap =>0, =>0"
@@ -496,7 +496,7 @@ test_program! {
 	"skip_at:"
 	"jmp_to:"	"ret 0"
 	"skip_to:"	"jmp jmp_to, jmp_at"
-	"inc1:"		"inc =>add1"
+	"inc1:"		"add Low, =>add1"
 	"add1:"		"add =>jmp_at=>jmp_to=>skip_to"
 	"jmp_at:"
 }
@@ -577,13 +577,13 @@ test_program! {
 	// Takes a u0 (n)(<14), returning a u0 result equals to the nth number in the fibonacci sequence.
 	"entry:"
 							"dup 	=>dec_n, =>0"								// Send to next jmp, and decrementor
-							"jmp		early_ret, 0"							// If n=0, result is 0
+							"jmp	early_ret, 0"								// If n=0, result is 0
 
 							"const u0, 0"										// Initial values
 							"const u0, 1"
 							"echo =>values, =>add_values"
 	"loop_start:"
-	"dec_n:" 				"dec 	=>0"										// decrement n and send to loop condition and next decrementor
+	"dec_n:" 				"sub 	=>0"										// decrement n and send to loop condition and next decrementor
 							"dup 	=>0,"
 									"=>loop_end=>dec_n"
 							"jmp 	loop_start, loop_end"						// while n>0, repeat
@@ -655,7 +655,7 @@ test_program! {
 		["9u0"] 	-> [124, "124u0"]	: [ shared_metrics ]
 	]
 				"ld u0"
-				"inc =>1"
+				"add Low, =>1"
 				"ret 0"
 	"data:"
 				".bytes u0, 120"
@@ -886,13 +886,13 @@ test_program! {
 		["23u2"] 	-> [25, "25u3"]	: [ shared_metrics([4]) ]
 		["45u3"] 	-> [47, "47u3"]	: [ shared_metrics([8]) ]
 	]
-				"inc =>store"
+				"add Low, =>store"
 				"rsrv 64"
 	"store:"
 				"st [0]"
 				"ret end"
 				"ld u3 [0]"
-				"inc =>end"
+				"add Low, =>end"
 				"free 64"
 	"end:"
 }
@@ -931,21 +931,21 @@ test_program! {
 		["75u2"] 	-> [78, "78u2"]		: [ shared_metrics ]
 		["46u2"] 	-> [49, "49u2"]		: [ shared_metrics ]
 	]
-				"inc =>store"
+				"add Low, =>store"
 				"rsrv 16"
 				"rsrv 8, Base"
 	"store:"
 				"st [2]"
 				"const u0, func1"
 				"call 0"
-				"inc =>end"
+				"add Low, =>end"
 				"ret end"
 				"free 16"
 	"end:"
 	"func1:"
 				"ret func1_end"
 				"ld u2 [0]"
-				"inc =>func1_end"
+				"add Low, =>func1_end"
 	"func1_end:"
 }
 
@@ -983,17 +983,17 @@ test_program! {
 		["75u1"] 	-> [78, "78u1"]		: [ shared_metrics ]
 		["46u1"] 	-> [49, "49u1"]		: [ shared_metrics ]
 	]
-				"inc =>call_args"
+				"add Low, =>call_args"
 				"const u0, func1"
 				"call 0"
 	"call_args:"
 				"ld u1 [0]"
-				"inc =>end"
+				"add Low, =>end"
 				"ret end"
 				"free 2"
 	"end:"
 	"func1:"
-				"inc =>store"
+				"add Low, =>store"
 				"rsrv 2, Base"
 	"store:"	"st [0]"
 				"ret func1_end"
@@ -1034,7 +1034,7 @@ test_program! {
 					"ret return"
 	"dup_addr:"		"dup =>load_next, =>addr_repeat"
 	"loop_start:"
-	"dec_size:"		"dec =>0"
+	"dec_size:"		"sub Low, =>0"
 					"dup =>load_next, =>loop_end=>loop_start=>dec_size, =>"
 	"loop_cond:"	"jmp loop_start, loop_end"
 	"load_next:"	"ld u0"
@@ -1093,14 +1093,14 @@ test_program! {
 	"loop_start:"
 	"load_next:"		"ld u0"
 						"echo =>store_copy"
-	"dec_count:"		"dec =>0"
+	"dec_count:"		"sub Low, =>0"
 						"dup =>loop_cond, =>loop_end=>loop_start=>dec_count"
 	"loop_cond:"		"jmp loop_start, loop_end"
 	"dup_sink:"			"dup =>store_copy, =>inc_sink"
-	"inc_source:"		"inc =>0"
+	"inc_source:"		"add Low, =>0"
 						"dup =>loop_end=>loop_start=>load_next,"
 							"=>loop_end=>loop_start=>inc_source"
-	"inc_sink:"			"inc =>loop_end=>loop_start=>dup_sink"
+	"inc_sink:"			"add Low, =>loop_end=>loop_start=>dup_sink"
 	"store_copy:"		"st"
 	"loop_end:"
 						"cap =>0, =>0"				// Throw out values surviving the loop exit
@@ -1160,8 +1160,8 @@ test_program! {
 						"dup =>loop_cond, =>store"
 	"loop_cond:"		"jmp loop_start, loop_end"
 	"dup_dst:"			"dup =>store, =>0"
-						"inc =>loop_end=>loop_start=>dup_dst"
-	"inc_src:"			"inc =>loop_end=>loop_start=>dup_src"
+						"add Low, =>loop_end=>loop_start=>dup_dst"
+	"inc_src:"			"add Low, =>loop_end=>loop_start=>dup_src"
 	"store:"			"st"
 	"loop_end:"
 						"cap =>0, =>0"// Throw out values surviving the loop exit
@@ -1327,157 +1327,82 @@ test_program! {
 test_program! {
 	bsearch [
 		// Empty array
-		["0i0", "0u0", "1u0"] 	-> [0, "0u0"]		: []
-		// Single-element array
-		["-1i0", "1u0", "1u0"]  -> [0, "0u0"]		: []
+		["2i0", "0u0", "1u0"] 	-> [0, "0u0"]		: []
+		["2i1", "0u0", "2u0"] 	-> [0, "0u0"]		: []
+		// 1 element array
+		["-1i0", "1u0", "1u0"] 	-> [0, "0u0"]		: []
 		["0i0", "1u0", "1u0"] 	-> [4, "4u0"]		: []
-		["1i0", "1u0", "1u0"] 	-> [0, "0u0"]		: []
-		// Two-element array
-		["-1i0", "2u0", "1u0"] -> [0, "0u0"]		: []
+		["7i0", "1u0", "1u0"] 	-> [0, "0u0"]		: []
+		["-1i0", "1u0", "2u0"] 	-> [0, "0u0"]		: []
+		["0i0", "1u0", "2u0"] 	-> [8, "8u0"]		: []
+		["7i0", "1u0", "2u0"] 	-> [0, "0u0"]		: []
+		// 2 element array
+		["-1i0", "2u0", "1u0"] 	-> [0, "0u0"]		: []
 		["0i0", "2u0", "1u0"] 	-> [4, "4u0"]		: []
-		["1i0", "2u0", "1u0"] 	-> [0, "0u0"]		: []
 		["2i0", "2u0", "1u0"] 	-> [5, "5u0"]		: []
-		["3i0", "2u0", "1u0"] 	-> [0, "0u0"]		: []
-		// Three-element array
-		["-1i0", "3u0", "1u0"] -> [0, "0u0"]		: []
+		["7i0", "2u0", "1u0"] 	-> [0, "0u0"]		: []
+		["-1i0", "2u0", "2u0"] 	-> [0, "0u0"]		: []
+		["0i0", "2u0", "2u0"] 	-> [8, "8u0"]		: []
+		["2i0", "2u0", "2u0"] 	-> [10, "10u0"]		: []
+		["7i0", "2u0", "2u0"] 	-> [0, "0u0"]		: []
+		// 3 element array
+		["-1i0", "3u0", "1u0"] 	-> [0, "0u0"]		: []
 		["0i0", "3u0", "1u0"] 	-> [4, "4u0"]		: []
-		["1i0", "3u0", "1u0"] 	-> [0, "0u0"]		: []
 		["2i0", "3u0", "1u0"] 	-> [5, "5u0"]		: []
-		["3i0", "3u0", "1u0"] 	-> [0, "0u0"]		: []
 		["4i0", "3u0", "1u0"] 	-> [6, "6u0"]		: []
-		["5i0", "3u0", "1u0"] 	-> [0, "0u0"]		: []
+		["7i0", "3u0", "1u0"] 	-> [0, "0u0"]		: []
+		["-1i0", "3u0", "2u0"] 	-> [0, "0u0"]		: []
+		["0i0", "3u0", "2u0"] 	-> [8, "8u0"]		: []
+		["2i0", "3u0", "2u0"] 	-> [10, "10u0"]		: []
+		["4i0", "3u0", "2u0"] 	-> [12, "12u0"]		: []
+		["7i0", "3u0", "2u0"] 	-> [0, "0u0"]		: []
+		// 4 element array
+		["-1i0", "4u0", "1u0"] 	-> [0, "0u0"]		: []
+		["0i0", "4u0", "1u0"] 	-> [4, "4u0"]		: []
+		["2i0", "4u0", "1u0"] 	-> [5, "5u0"]		: []
+		["4i0", "4u0", "1u0"] 	-> [6, "6u0"]		: []
+		["6i0", "4u0", "1u0"] 	-> [7, "7u0"]		: []
+		["7i0", "4u0", "1u0"] 	-> [0, "0u0"]		: []
+		["-1i0", "4u0", "2u0"] 	-> [0, "0u0"]		: []
+		["0i0", "4u0", "2u0"] 	-> [8, "8u0"]		: []
+		["2i0", "4u0", "2u0"] 	-> [10, "10u0"]		: []
+		["4i0", "4u0", "2u0"] 	-> [12, "12u0"]		: []
+		["6i0", "4u0", "2u0"] 	-> [14, "14u0"]		: []
+		["7i0", "4u0", "2u0"] 	-> [0, "0u0"]		: []
 	]
 								"echo =>1"
 								"jmp entry, 0"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// Array for i8 data
 	"data_i8:" // Addr: 4
 								".bytes i0, 0"
 								".bytes i0, 2"
 								".bytes i0, 4"
 								".bytes i0, 6"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// Array for i16 data
 	"data_i16:" // Addr: 8
 								".bytes i1, 0"
 								".bytes i1, 2"
 								".bytes i1, 4"
 								".bytes i1, 6"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// Addresses of comparison functions
 	"cmp_fns:"// Addr: 16
 								".bytes u0, fn_cmp_i8"
 								".bytes u0, fn_cmp_i16"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// Addresses of arrays
 	"data_addr:" // Addr: 18
 								".bytes u0, data_i8"
 								".bytes u0, data_i16"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// Store position for key to allow for getting its address, which is passed to bsearch
 	"key_store:" // Addr: 20
 								".bytes u1, 0"
-	"entry:"//addr:22
-								"echo =>entry_store_key, =>entry_after_base, =>"
-								"dup =>echo_size, =>sub_size"
-								// First store the key, so that we can get its address
-								"const u0, key_store"
-	"entry_store_key:"			"st"
-								// Choose comparison function and array based on size
-	"sub_size:"					"dec =>0"
-								"dup =>calc_cmp_fn, =>calc_data_addr"
-								"const u0, data_addr"
-								"ld u0"
-	"calc_data_addr:"			"add =>entry_after_key"
-	"entry_after_base:"			"echo =>entry_after_key"
-	"echo_size:"				"echo =>entry_after_key"
-								"const u0, cmp_fns"
-								"ld u0"
-	"calc_cmp_fn:"				"add =>entry_store_cmp_fn"
-								"rsrv 2"
-	"entry_store_cmp_fn:"		"st [0]"
-								// Call bsearch using key
-								"const u0, fn_bsearch"
-								"call call_args"
-														//cmp_fn from stack
-														// size from input
-														// nitems from input
-														// base
-	"entry_after_key:"			"const u0, key_store"	// key
-	"call_args:"
-								"echo =>entry_ret"
-								"ret entry_ret"
-	"entry_ret:"
-								".bytes u2, 0"
-	/////////////////////////////////////////////////////////////////////////////////////////////
-
-	// We put this block here to allow the jmp targeting it to jump on non-zero
-	"greater_than:"//addr:34	// Set bottom to pivot+1
-								"jmp loop, greater_than_end"
-								// Increment pivot and set as bottom
-								"inc =>gt_dup_bot"
-								// Throw away pivot address and bottom
-								"cap =>0, =>0"
-								"cap =>0, =>0"
-								// Keep top
-								"dup =>gt_top_eq_bot, =>greater_than_end=>loop=>loop_dup_top"
-	"gt_dup_bot:"				"dup =>gt_top_eq_bot, =>greater_than_end=>loop=>loop_dup_bottom"
-	"gt_top_eq_bot:"			"sub =>gt_check_not_found"
-	"gt_check_not_found:"		"jmp fn_bsearch_ret_null, greater_than_end"
-	"greater_than_end:"
-
-	"fn_bsearch:"//addr:50
-								"echo =>loop_dup_key, =>loop_dup_base, =>"
-								"echo =>dup_len, =>dup_size"
-								"ld u1 [0]"// Load cmp_fn from stack
-								"echo =>dup_cmp_fn"
-	"dup_len:"					"dup =>check_zero_len, =>loop_dup_top"
-	"dup_size:"					"dup =>check_zero_size, =>loop_dup_size"
-	"check_zero_len:"			"jmp fn_bsearch_ret_null, 1"
-	"check_zero_size:"			"jmp fn_bsearch_ret_null, 0"
-								"const u0, 0" // Initial bottom, addr: 68
-	"loop:"
-	"loop_dup_bottom:"			"dup =>add_top_bot, =>|=>bot_to_bot"
-	"loop_dup_top:"				"dup =>add_top_bot, =>|=>throw_away_top"
-	"loop_dup_size:"			"dup =>calc_pivot_offset, =>|=>less_than_end=>loop=>loop_dup_size"
-	"loop_dup_base:"			"dup =>calc_pivot_addr, =>|=>less_than_end=>loop=>loop_dup_base"
-	"loop_dup_key:"				"dup =>cmp_fn_args, =>|=>less_than_end=>loop=>loop_dup_key"
-								// Calculate the pivot by calculating the average of the top and bottom
-	"add_top_bot:"				"add =>calc_pivot"
-	"calc_pivot_idx:"			"shr =>loop_dup_pivot"
-	"loop_dup_pivot:"			"dup =>calc_pivot_offset, =>|=>pivot_to_top"
-	"calc_pivot_offset:"		"mul =>calc_pivot_addr"
-	"calc_pivot_addr:"			"add =>0"
-								"dup =>cmp_fn_args, =>|=>pivot_addr_throw_away"
-	"dup_cmp_fn:"				"dup =>0, =>|=>less_than_end=>loop=>dup_cmp_fn"
-								"call cmp_fn_args"
-	"cmp_fn_args:"//addr:94
-								"dup =>check_equal, =>is_positive"
-	"check_equal:"				"jmp equal, check_jmp_loc"
-								"const i0, 127" // Only adding positive to i8::MAX will overflow
-	"is_positive:"				"add High, =>check_positive"
-								// Will only jump on non-zero (i.e. true) since target is above
-	"check_positive:"			"jmp greater_than, check_jmp_loc"
-	"check_jmp_loc:"//addr:104
-
-								// If no jmp occurred, must be less than
-	"less_than:"				// Set top to pivot
-								"jmp loop, less_than_end"
-	"pivot_to_top:"				"dup =>lt_top_eq_bot, =>less_than_end=>loop=>loop_dup_top"
-	"pivot_addr_throw_away:"	"cap =>0, =>0"
-	"bot_to_bot:"				"dup =>lt_top_eq_bot, =>less_than_end=>loop=>loop_dup_bottom"
-	"throw_away_top:"			"cap =>0, =>0"
-								"cap =>0, =>0" //Padding to match greater_than
-	"lt_top_eq_bot:"			"sub =>lt_check_not_found"
-	"lt_check_not_found:"		"jmp fn_bsearch_ret_null, less_than_end"
-	"less_than_end:"//addr:120
-
-	"equal:"					// Pivot is what we are looking for, return its addr
-								"ret equal_end"
-								// Pivot index reaches here, throw it away
-								"cap =>0, =>0"
-								// Return pivot address
-	"equal_end:"
-
-	"fn_bsearch_ret_null:"
-								"ret fn_bsearch_end"
-								"cap =>fn_bsearch_end, =>15" // Throw away anything going to the return
-								"cap =>0, =>15" // Throw away anything going to the const
-								"const u0, 0"
-	"fn_bsearch_end:"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// bsearch comparison of i8 pointers
-	"fn_cmp_i8:"//130
+	"fn_cmp_i8:" // Addr: 22
 								"echo =>fn_cmp_i8_ld1, =>fn_cmp_i8_ld2"
 								"ret fn_cmp_i8_ret"
 	"fn_cmp_i8_ld1:"			"ld i0"
@@ -1487,7 +1412,7 @@ test_program! {
 	"fn_cmp_i8_ret:"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// bsearch comparison of i16 pointers
-	"fn_cmp_i16:"
+	"fn_cmp_i16:" // Addr: 34
 								"echo =>fn_cmp_i16_ld1, =>fn_cmp_i16_ld2"
 								"ret fn_cmp_i16_ret"
 	"fn_cmp_i16_ld1:"			"ld i1"
@@ -1495,4 +1420,127 @@ test_program! {
 	"fn_cmp_i16_ld2:"			"ld i1"
 	"fn_cmp_i16_sub:"			"sub =>0"
 	"fn_cmp_i16_ret:"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// Test setup
+	"entry:"
+								"echo =>entry_store_key, =>entry_after_base, =>"
+								"dup =>echo_size, =>sub_size"
+								// First store the key, so that we can get its address
+								"const u0, key_store"
+	"entry_store_key:"			"st"
+								// Choose comparison function and array based on size
+	"sub_size:"					"sub Low, =>0"
+								"dup =>calc_cmp_fn, =>calc_data_addr"
+								// Choose data array
+								"const u0, data_addr"
+	"calc_data_addr:"			"add =>0"
+								"ld u0"
+								// Pass base address, nitems, and size to bsearch
+								"echo =>entry_after_key"
+	"entry_after_base:"			"echo =>entry_after_key"
+	"echo_size:"				"echo =>entry_after_key"
+								// Choose comparison function and put its address on the stack
+								"const u0, cmp_fns"
+	"calc_cmp_fn:"				"add =>0"
+								"ld u0"
+								"echo =>entry_store_cmp_fn"
+								"rsrv 2"
+	"entry_store_cmp_fn:"		"st [0]"
+								// Call bsearch
+								"const u0, fn_bsearch"
+								"call call_args"
+														//cmp_fn (stack)
+														// size
+														// nitems
+														// base
+	"entry_after_key:"			"const u0, key_store"	// key
+	"call_args:"
+								"echo =>entry_ret"
+								"ret entry_ret"
+	"entry_ret:"
+								".bytes u2, 0"
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// bsearch
+	"fn_bsearch:" // Addr: 72
+										"echo =>fn_bsearch_dup_key, =>fn_bsearch_dup_base, =>"
+										"echo =>fn_bsearch_dup_nr, =>fn_bsearch_dup_size"
+										"free 2, Base" // free stack so nothing is returned
+
+	"fn_bsearch_dup_nr:"				"dup =>fn_bsearch_dup_nr2, =>fn_bsearch_check_zero"
+										// If elements == 0, return null
+	"fn_bsearch_check_zero:"			"jmp fn_bsearch_null, 0"
+										"nop" // these nops are here to ensure that no operands
+										"nop" // are sent to fn_bsearch_null
+										"nop"
+
+	"fn_bsearch_loop_start:"
+	"fn_bsearch_dup_key:"				"dup =>fn_bsearch_cmp_call_args, =>|=>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_key"
+	"fn_bsearch_dup_base:"				"dup =>fn_bsearch_pivot_add, =>|=>fn_bsearch_cap_base"
+	"fn_bsearch_dup_size:"				"dup =>fn_bsearch_pivot_scale, =>|=>fn_bsearch_calc_right_base, =>"
+										"echo =>|=>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_size"
+	"fn_bsearch_dup_nr2:"				"dup =>fn_bsearch_pivot_half_elements, =>fn_bsearch_check_loop, =>"
+										"dup =>|=>fn_bsearch_cap_nr, =>|=>fn_bsearch_dec_nr"
+
+										// Check iteration
+	"fn_bsearch_check_loop:"			"jmp fn_bsearch_loop_start, fn_bsearch_loop_end"
+
+										// Calculate the pivot (element to compare)
+	"fn_bsearch_pivot_half_elements:"	"shr =>fn_bsearch_pivot_scale"
+	"fn_bsearch_pivot_scale:"			"mul Low, =>fn_bsearch_pivot_add"
+	"fn_bsearch_pivot_add:"				"add Low, =>fn_bsearch_pivot_dup"
+	"fn_bsearch_pivot_dup:"				"dup =>fn_bsearch_cmp_call_args,\
+											 =>|=>fn_bsearch_check_jmp_loc=>fn_bsearch_equal=>fn_bsearch_equal_end" // assembling error when trying to make it multipath
+
+										// call comparison function
+										"ld u0 [0]"
+	"fn_bsearch_cmp_call:"				"call fn_bsearch_cmp_call_args"
+	"fn_bsearch_cmp_call_args:"
+										"dup =>fn_bsearch_check_equal, =>fn_bsearch_check_positive"
+										// if 0, break
+	"fn_bsearch_check_equal:"			"jmp fn_bsearch_equal, fn_bsearch_check_jmp_loc"
+	"fn_bsearch_check_jmp_loc:"
+	"fn_bsearch_check_positive:"		"gt =>fn_bsearch_check_positive_dup"
+	"fn_bsearch_check_cap_pivot:"		"echo =>fn_bsearch_calc_right_base"
+	"fn_bsearch_check_positive_dup:"	"dup =>fn_bsearch_choose_base, =>fn_bsearch_choose_nr"
+
+										// Calculate move right nr
+	"fn_bsearch_cap_nr:"				"echo =>fn_bsearch_choose_nr"
+	"fn_bsearch_dec_nr:"				"sub =>fn_bsearch_choose_nr"
+	"fn_bsearch_choose_nr:"				"pick =>fn_bsearch_halve_nr"
+
+										// halve nr
+	"fn_bsearch_halve_nr:"				"shr =>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_nr2"
+
+										// Calculate move right base
+	"fn_bsearch_cap_base:"				"echo =>fn_bsearch_choose_base"
+	"fn_bsearch_calc_right_base:"		"add Low, =>fn_bsearch_choose_base" // pivot + size
+	"fn_bsearch_choose_base:"			"pick =>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_base"
+
+	"fn_bsearch_loop_end:"
+										"nop" // to capture the loop variables
+										"nop"
+										"nop"
+										"nop"
+										"nop"
+										"nop"
+
+	"fn_bsearch_null:"					// nothing found return 0
+										"ret fn_bsearch_null_end"
+										// Return NULL
+										"const u0, 0"
+	"fn_bsearch_null_end:"
+	"fn_bsearch_end:"
+
+	"fn_bsearch_equal:"					// Pivot is what we are looking for, return its addr
+										"ret fn_bsearch_equal_end"
+										// Return pivot address
+	"fn_bsearch_equal_end:"
+
+	// "fn_bsearch_test:"
+	// 							"echo =>10, =>10, =>"
+	// 							"echo =>10, =>10"
+	// 							"ret fn_bsearch_end"
+	// 							"ld u0 [0]"
+	// 							"add Low, =>fn_bsearch_end"
+
 }
