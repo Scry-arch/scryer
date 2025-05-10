@@ -1369,6 +1369,18 @@ test_program! {
 		["4i0", "4u0", "2u0"] 	-> [12, "12u0"]		: []
 		["6i0", "4u0", "2u0"] 	-> [14, "14u0"]		: []
 		["7i0", "4u0", "2u0"] 	-> [0, "0u0"]		: []
+		// 5 element array
+		["-1i0", "5u0", "2u0"] 	-> [0, "0u0"]		: []
+		["0i0", "5u0", "2u0"] 	-> [8, "8u0"]		: []
+		["1i0", "5u0", "2u0"] 	-> [0, "0u0"]		: []
+		["2i0", "5u0", "2u0"] 	-> [10, "10u0"]		: []
+		["3i0", "5u0", "2u0"] 	-> [0, "0u0"]		: []
+		["4i0", "5u0", "2u0"] 	-> [12, "12u0"]		: []
+		["5i0", "5u0", "2u0"] 	-> [0, "0u0"]		: []
+		["6i0", "5u0", "2u0"] 	-> [14, "14u0"]		: []
+		["7i0", "5u0", "2u0"] 	-> [0, "0u0"]		: []
+		["8i0", "5u0", "2u0"] 	-> [16, "16u0"]		: []
+		["9i0", "5u0", "2u0"] 	-> [0, "0u0"]		: []
 	]
 								"echo =>1"
 								"jmp entry, 0"
@@ -1386,6 +1398,7 @@ test_program! {
 								".bytes i1, 2"
 								".bytes i1, 4"
 								".bytes i1, 6"
+								".bytes i1, 8"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// Addresses of comparison functions
 	"cmp_fns:"// Addr: 16
@@ -1461,70 +1474,61 @@ test_program! {
 								".bytes u2, 0"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// bsearch
-	"fn_bsearch:" // Addr: 72
+	"fn_bsearch:"
 										"echo =>fn_bsearch_dup_key, =>fn_bsearch_dup_base, =>"
 										"echo =>fn_bsearch_dup_nr, =>fn_bsearch_dup_size"
-										"free 2, Base" // free stack so nothing is returned
 
 	"fn_bsearch_dup_nr:"				"dup =>fn_bsearch_dup_nr2, =>fn_bsearch_check_zero"
 										// If elements == 0, return null
-	"fn_bsearch_check_zero:"			"jmp fn_bsearch_null, 0"
-										"nop" // these nops are here to ensure that no operands
-										"nop" // are sent to fn_bsearch_null
-										"nop"
+	"fn_bsearch_check_zero:"			"jmp fn_bsearch_null, fn_bsearch_loop_start"
+										"free 2, Base" // free stack so nothing is returned
 
 	"fn_bsearch_loop_start:"
-	"fn_bsearch_dup_key:"				"dup =>fn_bsearch_cmp_call_args, =>|=>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_key"
-	"fn_bsearch_dup_base:"				"dup =>fn_bsearch_pivot_add, =>|=>fn_bsearch_cap_base"
-	"fn_bsearch_dup_size:"				"dup =>fn_bsearch_pivot_scale, =>|=>fn_bsearch_calc_right_base, =>"
-										"echo =>|=>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_size"
-	"fn_bsearch_dup_nr2:"				"dup =>fn_bsearch_pivot_half_elements, =>fn_bsearch_check_loop, =>"
-										"dup =>|=>fn_bsearch_cap_nr, =>|=>fn_bsearch_dec_nr"
-
+	"fn_bsearch_dup_nr2:"				"dup =>fn_bsearch_pivot_half_elements, =>|=>fn_bsearch_dec_nr, =>"
+	
 										// Check iteration
 	"fn_bsearch_check_loop:"			"jmp fn_bsearch_loop_start, fn_bsearch_loop_end"
-
+	
+										// Issue call to comparison function
+										// these instruction are here to match with fn_bsearch_null
+										// So no operands from the loop are returned
+										"ld u0 [0]"
+										"call fn_bsearch_cmp_call_args"
+	
+	
+	"fn_bsearch_dup_key:"				"dup =>fn_bsearch_cmp_call_args, =>|=>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_key"
+	"fn_bsearch_dup_base:"				"dup =>fn_bsearch_pivot_add, =>|=>fn_bsearch_cap_base"
+	
 										// Calculate the pivot (element to compare)
 	"fn_bsearch_pivot_half_elements:"	"shr =>fn_bsearch_pivot_scale"
+	"fn_bsearch_dup_size:"				"dup =>|=>fn_bsearch_calc_right_base, =>|=>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_size, =>"
 	"fn_bsearch_pivot_scale:"			"mul Low, =>fn_bsearch_pivot_add"
 	"fn_bsearch_pivot_add:"				"add Low, =>fn_bsearch_pivot_dup"
 	"fn_bsearch_pivot_dup:"				"dup =>fn_bsearch_cmp_call_args,\
-											 =>|=>fn_bsearch_check_jmp_loc=>fn_bsearch_equal=>fn_bsearch_equal_end" // assembling error when trying to make it multipath
+											 =>|=>fn_bsearch_calc_right_base" // assembling error when trying to make it multipath with fn_bsearch_equal
 
-										// call comparison function
-										"ld u0 [0]"
-	"fn_bsearch_cmp_call:"				"call fn_bsearch_cmp_call_args"
+										// Trigger call
 	"fn_bsearch_cmp_call_args:"
 										"dup =>fn_bsearch_check_equal, =>fn_bsearch_check_positive"
-										// if 0, break
+	
+										// if 0, return pivot
 	"fn_bsearch_check_equal:"			"jmp fn_bsearch_equal, fn_bsearch_check_jmp_loc"
-	"fn_bsearch_check_jmp_loc:"
-	"fn_bsearch_check_positive:"		"gt =>fn_bsearch_check_positive_dup"
-	"fn_bsearch_check_cap_pivot:"		"echo =>fn_bsearch_calc_right_base"
-	"fn_bsearch_check_positive_dup:"	"dup =>fn_bsearch_choose_base, =>fn_bsearch_choose_nr"
-
-										// Calculate move right nr
-	"fn_bsearch_cap_nr:"				"echo =>fn_bsearch_choose_nr"
-	"fn_bsearch_dec_nr:"				"sub =>fn_bsearch_choose_nr"
-	"fn_bsearch_choose_nr:"				"pick =>fn_bsearch_halve_nr"
-
-										// halve nr
+	"fn_bsearch_check_positive:"		"gt =>fn_bsearch_choose_base"
+	
+										// decrement nr, then halve
+	"fn_bsearch_dec_nr:"				"sub =>fn_bsearch_halve_nr"
 	"fn_bsearch_halve_nr:"				"shr =>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_nr2"
-
+	
+	"fn_bsearch_check_jmp_loc:"
+	
 										// Calculate move right base
 	"fn_bsearch_cap_base:"				"echo =>fn_bsearch_choose_base"
 	"fn_bsearch_calc_right_base:"		"add Low, =>fn_bsearch_choose_base" // pivot + size
 	"fn_bsearch_choose_base:"			"pick =>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_base"
 
 	"fn_bsearch_loop_end:"
-										"nop" // to capture the loop variables
-										"nop"
-										"nop"
-										"nop"
-										"nop"
-										"nop"
 
-	"fn_bsearch_null:"					// nothing found return 0
+	"fn_bsearch_null:"					// nothing found
 										"ret fn_bsearch_null_end"
 										// Return NULL
 										"const u0, 0"
@@ -1533,14 +1537,12 @@ test_program! {
 
 	"fn_bsearch_equal:"					// Pivot is what we are looking for, return its addr
 										"ret fn_bsearch_equal_end"
+										"echo =>fn_bsearch_equal_pick" // capture size + pivot
+										"nop"	// ignore in-flight operands
+										"nop"
+	"fn_bsearch_equal_pick:"			"const u0, 1"					// substitute for immediate pick
+										"pick =>fn_bsearch_equal_end"
 										// Return pivot address
 	"fn_bsearch_equal_end:"
-
-	// "fn_bsearch_test:"
-	// 							"echo =>10, =>10, =>"
-	// 							"echo =>10, =>10"
-	// 							"ret fn_bsearch_end"
-	// 							"ld u0 [0]"
-	// 							"add Low, =>fn_bsearch_end"
 
 }
