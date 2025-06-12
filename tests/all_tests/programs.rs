@@ -1505,8 +1505,11 @@ test_program! {
 	"fn_bsearch_pivot_scale:"			"mul Low, =>fn_bsearch_pivot_add"
 	"fn_bsearch_pivot_add:"				"add Low, =>fn_bsearch_pivot_dup"
 	"fn_bsearch_pivot_dup:"				"dup =>fn_bsearch_cmp_call_args,\
-											 =>|=>fn_bsearch_calc_right_base" // assembling error when trying to make it multipath with fn_bsearch_equal
-
+											 =>|=>(\
+											 	fn_bsearch_calc_right_base, \
+											 	fn_bsearch_check_jmp_loc=>fn_bsearch_equal=>fn_bsearch_equal_cap\
+											)"
+	
 										// Trigger call
 	"fn_bsearch_cmp_call_args:"
 										"dup =>fn_bsearch_check_equal, =>fn_bsearch_check_positive"
@@ -1537,7 +1540,7 @@ test_program! {
 
 	"fn_bsearch_equal:"					// Pivot is what we are looking for, return its addr
 										"ret fn_bsearch_equal_end"
-										"echo =>fn_bsearch_equal_pick" // capture size + pivot
+	"fn_bsearch_equal_cap:"				"echo =>fn_bsearch_equal_pick" // capture size + pivot
 										"nop"	// ignore in-flight operands
 										"nop"
 	"fn_bsearch_equal_pick:"			"const u0, 1"					// substitute for immediate pick
