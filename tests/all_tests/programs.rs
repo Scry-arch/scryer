@@ -387,54 +387,54 @@ test_program! {
 	]
 				"echo =>to_add"
 				// 40 nops ensure that only EchoLong can be used
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
 
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
 
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
 
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
 
 				"ret ret_at"
 	"to_add:"	"sub Low, =>ret_at"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
+				"nop"
+				"nop"
 	"ret_at:"
 }
 
@@ -463,10 +463,10 @@ test_program! {
 				"jmp add1, after_inc1"
 	"inc1:"		"add Low, =>after_inc1=>add1"
 	"after_inc1:"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
-				"cap =>0, =>0"
+				"nop"
+				"nop"
+				"nop"
+				"nop"
 	"add1:"		"add =>0"
 	"ret_at:"
 }
@@ -1086,8 +1086,7 @@ test_program! {
 	"dup_source:"		"dup =>load_next, =>inc_source"
 
 	"loop_start:"
-	"load_next:"		"ld u0"
-						"echo =>store_copy"
+	"load_next:"		"ld u0" "echo =>store_copy"
 	"dec_count:"		"sub Low, =>0"
 						"dup =>loop_cond, =>loop_end=>loop_start=>dec_count"
 	"loop_cond:"		"jmp loop_start, loop_end"
@@ -1098,16 +1097,16 @@ test_program! {
 	"inc_sink:"			"add Low, =>loop_end=>loop_start=>dup_sink"
 	"store_copy:"		"st"
 	"loop_end:"
-						"cap =>0, =>0"				// Throw out values surviving the loop exit
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
+						"nop"				// Throw out values surviving the loop exit
+						"nop"
+						"nop"
+						"nop"
+						"nop"
+						"nop"
+						"nop"
+						"nop"
+						"nop"
+						"nop"
 
 						"const u0, dst1"
 						"ld i0"
@@ -1159,14 +1158,14 @@ test_program! {
 	"inc_src:"			"add Low, =>loop_end=>loop_start=>dup_src"
 	"store:"			"st"
 	"loop_end:"
-						"cap =>0, =>0"// Throw out values surviving the loop exit
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
-						"cap =>0, =>0"
+						"nop"// Throw out values surviving the loop exit
+						"nop"
+						"nop"
+						"nop"
+						"nop"
+						"nop"
+						"nop"
+						"nop"
 
 						"const u0, dst1"
 						"ld u0"
@@ -1543,4 +1542,78 @@ test_program! {
 										// Return pivot address
 	"fn_bsearch_equal_end:"
 
+}
+
+test_program! {
+	hexval [
+		["0u0"] 	-> [0, "0u0"]		: [  ]
+		["47u0"] 	-> [0, "0u0"]		: [  ]
+		
+		["48u0"] 	-> [0, "0u0"]		: [  ] // '0' - '9'
+		["49u0"] 	-> [1, "1u0"]		: [  ]
+		["50u0"] 	-> [2, "2u0"]		: [  ]
+		["51u0"] 	-> [3, "3u0"]		: [  ]
+		["52u0"] 	-> [4, "4u0"]		: [  ]
+		["53u0"] 	-> [5, "5u0"]		: [  ]
+		["54u0"] 	-> [6, "6u0"]		: [  ]
+		["55u0"] 	-> [7, "7u0"]		: [  ]
+		["56u0"] 	-> [8, "8u0"]		: [  ]
+		["57u0"] 	-> [9, "9u0"]		: [  ]
+		
+		["58u0"] 	-> [0, "0u0"]		: [  ]
+		["64u0"] 	-> [0, "0u0"]		: [  ]
+		
+		["65u0"] 	-> [10, "10u0"]		: [  ] // 'A' - 'F'
+		["66u0"] 	-> [11, "11u0"]		: [  ]
+		["67u0"] 	-> [12, "12u0"]		: [  ]
+		["68u0"] 	-> [13, "13u0"]		: [  ]
+		["69u0"] 	-> [14, "14u0"]		: [  ]
+		["70u0"] 	-> [15, "15u0"]		: [  ]
+		
+		["71u0"] 	-> [0, "0u0"]		: [  ]
+		["96u0"] 	-> [0, "0u0"]		: [  ]
+		
+		["97u0"] 	-> [10, "10u0"]		: [  ] // 'a' - 'f'
+		["98u0"] 	-> [11, "11u0"]		: [  ]
+		["99u0"] 	-> [12, "12u0"]		: [  ]
+		["100u0"] 	-> [13, "13u0"]		: [  ]
+		["101u0"] 	-> [14, "14u0"]		: [  ]
+		["102u0"] 	-> [15, "15u0"]		: [  ]
+	]
+	// Input: u8 char value. Output: u8 the numeric value represented
+	"entry:"
+					"echo =>sub_0"
+					"const u0, 48" // '0'
+	"sub_0:"		"sub Low, =>0"
+					"dup =>check_in_09, =>return_in_09"
+					"const u0, 10"
+	"check_in_09:"	"lt =>0"
+					"jmp not_in_09, 0"
+					"ret return_in_09" // valid, return c-'0'
+	"return_in_09:"
+	
+	
+	"not_in_09:"	// =>1 is c-48
+					"ret ret_0"
+					"dup =>check_a, =>check_A"
+					"const u0, 48"
+	"check_a:"		"sub =>0"		// will only saturate to 0 if c-48 < 49 (a-48)
+					"dup =>choose, =>sub_1"
+					"const u0, 17" // 'A'-48
+	"check_A:"		"sub Low, =>choose"
+	"sub_1:"   		"sub Low, =>choose" // subtract the last 1 to reach 49 (a-48)
+	"choose:"       "pick =>0"
+					"dup =>check_in_AF, =>add_10"
+					"const u0, 6"
+	"check_in_AF:"	"lt =>0"
+					"jmp not_in_AF, 0"
+					"ret return_in_AF" // valid, return c-'A'+10
+					"const u0, 10"
+	"add_10:"		"add =>0"
+	"return_in_AF:"
+	
+	"not_in_AF:"    // not hex digit, return 0
+					"const u0, 0"
+	"ret_0:"
+					
 }
