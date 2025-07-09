@@ -1585,17 +1585,16 @@ test_program! {
 					"echo =>sub_0"
 					"const u0, 48" // '0'
 	"sub_0:"		"sub Low, =>0"
-					"dup =>check_in_09, =>return_in_09"
+					"dup =>check_in_09, =>(return_in_09, jmp_not_in_09=>not_in_09=>dup_c)"
 					"const u0, 10"
 	"check_in_09:"	"lt =>0"
-					"jmp not_in_09, 0"
-					"ret return_in_09" // valid, return c-'0'
+					"jmp not_in_09, jmp_not_in_09"
+	"jmp_not_in_09:""ret return_in_09" // valid, return c-'0'
 	"return_in_09:"
-	
 	
 	"not_in_09:"	// =>1 is c-48
 					"ret ret_0"
-					"dup =>check_a, =>check_A"
+	"dup_c:"		"dup =>check_a, =>check_A"
 					"const u0, 48"
 	"check_a:"		"sub =>0"		// will only saturate to 0 if c-48 < 49 (a-48)
 					"dup =>choose, =>sub_1"
@@ -1615,5 +1614,60 @@ test_program! {
 	"not_in_AF:"    // not hex digit, return 0
 					"const u0, 0"
 	"ret_0:"
+}
+
+test_program! {
+	isxdigit [
+		["0u0"] 	-> [0, "0u0"]		: [  ]
+		["47u0"] 	-> [0, "0u0"]		: [  ]
+		
+		["48u0"] 	-> [1, "1u0"]		: [  ] // '0' - '9'
+		["49u0"] 	-> [1, "1u0"]		: [  ]
+		["50u0"] 	-> [1, "1u0"]		: [  ]
+		["51u0"] 	-> [1, "1u0"]		: [  ]
+		["52u0"] 	-> [1, "1u0"]		: [  ]
+		["53u0"] 	-> [1, "1u0"]		: [  ]
+		["54u0"] 	-> [1, "1u0"]		: [  ]
+		["55u0"] 	-> [1, "1u0"]		: [  ]
+		["56u0"] 	-> [1, "1u0"]		: [  ]
+		["57u0"] 	-> [1, "1u0"]		: [  ]
+		
+		["58u0"] 	-> [0, "0u0"]		: [  ]
+		["64u0"] 	-> [0, "0u0"]		: [  ]
+		
+		["65u0"] 	-> [1, "1u0"]		: [  ] // 'A' - 'F'
+		["66u0"] 	-> [1, "1u0"]		: [  ]
+		["67u0"] 	-> [1, "1u0"]		: [  ]
+		["68u0"] 	-> [1, "1u0"]		: [  ]
+		["69u0"] 	-> [1, "1u0"]		: [  ]
+		["70u0"] 	-> [1, "1u0"]		: [  ]
+		
+		["71u0"] 	-> [0, "0u0"]		: [  ]
+		["96u0"] 	-> [0, "0u0"]		: [  ]
+		
+		["97u0"] 	-> [1, "1u0"]		: [  ] // 'a' - 'f'
+		["98u0"] 	-> [1, "1u0"]		: [  ]
+		["99u0"] 	-> [1, "1u0"]		: [  ]
+		["100u0"] 	-> [1, "1u0"]		: [  ]
+		["101u0"] 	-> [1, "1u0"]		: [  ]
+		["102u0"] 	-> [1, "1u0"]		: [  ]
+	]
+	// Input: u8 char value. Output: u8 the numeric value represented
+	"entry:"
+					"dup =>sub_0, =>without_bit5"
+					"ret return"
+					"const u0, 48" // '0'
+	"sub_0:"		"sub Low, =>lt_10"
+					"const u0, 10"
+	"lt_10:"		"lt =>digit_or_letter"
 					
+					"const u0, 223" // used to ignore bit 5, the difference between 'a' and 'A'
+	"without_bit5:" "and =>sub_a"
+					"const u0, 65" // 'a'
+	"sub_a:"		"sub Low, =>lt_6"
+					"const u0, 6"
+	"lt_6:"			"lt =>digit_or_letter"
+	
+	"digit_or_letter:" "or =>0"
+	"return:"
 }
