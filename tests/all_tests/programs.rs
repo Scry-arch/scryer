@@ -1671,3 +1671,96 @@ test_program! {
 	"digit_or_letter:" "or =>0"
 	"return:"
 }
+
+test_program! {
+	// from the C std function 'atol', but only handling the hex case
+	atol_hex [
+		["19u0"] 	-> [0, "0u0"]		: [  ]
+		["18u0"] 	-> [16, "16u0"]		: [  ]
+		["4u0"] 	-> [254, "254u0"]	: [  ]
+		["5u0"] 	-> [14, "14u0"]		: [  ]
+		["7u0"] 	-> [203, "203u0"]	: [  ]
+		["8u0"] 	-> [11, "11u0"]		: [  ]
+		["10u0"] 	-> [152, "152u0"]	: [  ]
+		["11u0"] 	-> [8, "8u0"]		: [  ]
+		["13u0"] 	-> [111, "111u0"]	: [  ]
+		["14u0"] 	-> [15, "15u0"]		: [  ]
+		["16u0"] 	-> [16, "16u0"]		: [  ] // Check correct overflow behavior
+	]
+	// Input: c string (*char) with hex value (without initial "0x") with null-terminator.
+	// Output: u3 value (todo: right now only u0 because simulator does not support ALU of different operand types)
+	"start:"
+						"echo =>start_jmp_at=>entry"
+						"jmp entry, start_jmp_at"
+	"start_jmp_at:" //4
+						".bytes u0, 102"// f
+						".bytes u0, 69" // E
+						".bytes u0, 0"  // null
+						".bytes u0, 67" // C
+						".bytes u0, 98" // b
+						".bytes u0, 0"  // null
+						".bytes u0, 57" // 9
+						".bytes u0, 56" // 8
+						".bytes u0, 0"  // null
+						".bytes u0, 54" // 6
+						".bytes u0, 70" // F
+						".bytes u0, 0"  // null
+						".bytes u0, 51" // 3
+						".bytes u0, 50" // 2
+						".bytes u0, 49" // 1
+			/*19*/		".bytes u0, 48" // 0
+						".bytes u0, 0"  // null (need 4 nulls for u3 load)
+						".bytes u0, 0"  // null
+						".bytes u0, 0"  // null
+						".bytes u0, 0"  // null
+						".bytes u0, 3"  // Non-digit
+						".bytes u0, 4"  // Non-digit
+	
+	"entry:" //22
+						"echo =>dup_addr"
+						"const u0, 0"
+						"dup =>shift_sum, =>add_sum"
+						
+	"loop_start:"
+						"const u0, 16"
+	"shift_sum:"		"mul Low, =>add_sum" // value * 16
+	"dup_addr:"			"dup =>ld_char, =>str_inc"
+	"ld_char:"			"ld u0" // next char
+						"dup =>isx_entry, =>check_null"
+	"str_inc:"			"add Low, =>loop_end=>loop_start=>dup_addr"
+	"add_sum:"			"add Low, =>loop_end=>loop_start=>shift_sum" // (value* 16) + hexval
+	
+						// isxdigit
+	"isx_entry:"		"dup =>isx_sub_0, =>isx_without_bit5"
+						"const u0, 48"
+	"isx_sub_0:"		"sub Low, =>0"
+						"dup =>isx_lt_10, =>pre_choose_val"
+						"const u0, 223"
+	"isx_without_bit5:" "and =>isx_sub_a"
+						"const u0, 65"
+	"isx_sub_a:"		"sub Low, =>0"
+						"dup =>isx_lt_6, =>isx_sub_a_10"
+						"const u0, 10"
+	"isx_lt_10:"		"lt =>0"
+						"dup =>isx_digit_or_letter, =>choose_val"
+						"const u0, 6"
+	"isx_lt_6:"			"lt =>isx_digit_or_letter"
+	"isx_digit_or_letter:" "or =>should_loop"
+						// isxdigit end
+	
+	"check_null:"		"gt =>should_loop" // check not null
+	"should_loop:" 		"and =>0"
+						"dup =>check_loop, =>choose_val2"
+	"check_loop:"		"jmp loop_start, loop_end" // loop back as long as not NULL
+	
+						"const u0, 10"
+	"isx_sub_a_10:"		"add Low, =>choose_val"
+	"pre_choose_val:"	"echo =>0" // ensures sub_0 is the last operand
+	"choose_val:"		"pick =>pre_choose_val2"
+	"pre_choose_val2:"	"const u0, 0"
+	"choose_val2:"		"pick =>loop_end=>loop_start=>add_sum"
+	
+	"loop_end:"
+						"ret return"
+	"return:"
+}
