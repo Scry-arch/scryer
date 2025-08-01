@@ -540,10 +540,10 @@ test_program! {
 		ConsumedBytes		: 5 + (4 * extra_loops)
 		QueuedValues		: 7 + (4 * extra_loops)
 		QueuedValueBytes	: 7 + (4 * extra_loops)
-		InstructionReads	: 12 + (5 * extra_loops)
+		InstructionReads	: 14 + (5 * extra_loops)
 		IssuedBranches		: 0 + (1 * extra_loops)
 		TriggeredBranches	: 0 + (1 * extra_loops)
-		ReorderedOperands	: 7 + (2 * extra_loops)
+		ReorderedOperands	: 6 + (2 * extra_loops)
 	];
 )]
 test_program! {
@@ -558,7 +558,6 @@ test_program! {
 			InstructionReads	: 4
 			IssuedBranches		: 1
 			TriggeredBranches	: 1
-			ReorderedOperands	: 1
 		]
 		["1u0"]		-> [1, "1u0"]		: [ shared_metrics([0]) ]
 		["2u0"]		-> [1, "1u0"]		: [ shared_metrics([1]) ]
@@ -594,7 +593,9 @@ test_program! {
 							// At this point the low value is the result.
 							// wait for it to be on the ready list
 							"ret final_ret_trig"
-							"cap =>2, =>0"										// Get low value as result, throw high out
+							"nop"										// Get low value as result, throw high out
+							"nop"
+							"nop"
 	"final_ret_trig:"
 	"early_ret:" 			"ret early_ret_trig"								// n=0, return 0
 							"const u0, 0"
@@ -607,23 +608,21 @@ test_program! {
 		TriggeredReturns	: 1
 		ConsumedOperands	: 1
 		ConsumedBytes		: 1
-		QueuedValues		: 0
-		QueuedValueBytes	: 0
-		QueuedReads			: 1
-		DataReads			: 0
-		DataReadBytes		: 0
-		InstructionReads	: 3
+		QueuedValues		: 1
+		QueuedValueBytes	: 1
+		DataReads			: 1
+		DataReadBytes		: 1
+		InstructionReads	: 2
 	];
 )]
 test_program! {
 	load_from_array [
-		["6u0"] 	-> [123, "Load(Regular,0x6,123u0)"]	: [ shared_metrics ]
-		["7u0"] 	-> [124, "Load(Regular,0x7,124u0)"]	: [ shared_metrics ]
-		["8u0"] 	-> [125, "Load(Regular,0x8,125u0)"]	: [ shared_metrics ]
-		["9u0"] 	-> [126, "Load(Regular,0x9,126u0)"]	: [ shared_metrics ]
+		["4u0"] 	-> [123, "123u0"]	: [ shared_metrics ]
+		["5u0"] 	-> [124, "124u0"]	: [ shared_metrics ]
+		["6u0"] 	-> [125, "125u0"]	: [ shared_metrics ]
+		["7u0"] 	-> [126, "126u0"]	: [ shared_metrics ]
 	]
-				"ld u0"
-				"echo =>ret_at"
+				"ld u0, =>ret_at"
 				"ret ret_at"
 	"ret_at:"
 	"load_from:"
@@ -639,9 +638,8 @@ test_program! {
 		TriggeredReturns	: 1
 		ConsumedOperands	: 2
 		ConsumedBytes		: 2
-		QueuedValues		: 1
-		QueuedValueBytes	: 1
-		QueuedReads			: 1
+		QueuedValues		: 2
+		QueuedValueBytes	: 2
 		DataReads			: 1
 		DataReadBytes		: 1
 		InstructionReads	: 3
@@ -654,7 +652,7 @@ test_program! {
 		["8u0"] 	-> [123, "123u0"]	: [ shared_metrics ]
 		["9u0"] 	-> [124, "124u0"]	: [ shared_metrics ]
 	]
-				"ld u0"
+				"ld u0, =>0"
 				"add Low, =>1"
 				"ret 0"
 	"data:"
@@ -673,24 +671,22 @@ test_program! {
 		TriggeredBranches	: 1
 		ConsumedOperands	: 11
 		ConsumedBytes		: 10 + addr_size
-		QueuedValues		: 10
-		QueuedValueBytes	: 10
-		QueuedReads			: 1
-		DataReads			: 0
-		DataReadBytes		: 0
-		ReorderedOperands	: 9
-		InstructionReads	: 18
+		QueuedValues		: 11
+		QueuedValueBytes	: 11
+		DataReads			: 1
+		DataReadBytes		: 1
+		ReorderedOperands	: 8
+		InstructionReads	: 17
 	];
 )]
 test_program! {
 	load_before_store [
-		["8u0"] 	-> [0, "Load(Regular,0x8,0u0)"]	: [ shared_metrics([1]) ]
-		["9u1"] 	-> [1, "Load(Regular,0x9,1u0)"]	: [ shared_metrics([2]) ]
-		["10u2"] 	-> [2, "Load(Regular,0xA,2u0)"]	: [ shared_metrics([4]) ]
-		["11u3"] 	-> [3, "Load(Regular,0xB,3u0)"]	: [ shared_metrics([8]) ]
+		["6u0"] 	-> [255, "255u0"]	: [ shared_metrics([1]) ]
+		["7u1"] 	-> [255, "255u0"]	: [ shared_metrics([2]) ]
+		["8u2"] 	-> [255, "255u0"]	: [ shared_metrics([4]) ]
+		["9u3"] 	-> [255, "255u0"]	: [ shared_metrics([8]) ]
 	]
-				"ld u0"
-				"echo =>data=>init_data=>ret_at"
+				"ld u0, =>data=>init_data=>ret_at"
 				"ret ret_at"
 				"jmp init_data, 0"
 	"data:"
@@ -724,11 +720,10 @@ test_program! {
 		TriggeredReturns	: 1
 		ConsumedOperands	: 5
 		ConsumedBytes		: 5
-		QueuedValues		: 4
-		QueuedValueBytes	: 4
-		QueuedReads			: 1
-		DataReads			: 0
-		DataReadBytes		: 0
+		QueuedValues		: 5
+		QueuedValueBytes	: 6
+		DataReads			: 1
+		DataReadBytes		: 2
 		InstructionReads	: 6
 		ReorderedOperands	: 2
 	];
@@ -737,10 +732,10 @@ test_program! {
 	[
 		name [load_from_absolute_address]
 		tests [
-			["0u0"] 	-> [45, "Load(Regular,0x16,45i1)"]	: [ shared_metrics ]
-			["1u0"] 	-> [46, "Load(Regular,0x18,46i1)"]	: [ shared_metrics ]
-			["2u0"] 	-> [47, "Load(Regular,0x1A,47i1)"]	: [ shared_metrics ]
-			["3u0"] 	-> [48, "Load(Regular,0x1C,48i1)"]	: [ shared_metrics ]
+			["0u0"] 	-> [45, "45i1"]	: [ shared_metrics ]
+			["1u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
+			["2u0"] 	-> [47, "47i1"]	: [ shared_metrics ]
+			["3u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
 		]
 		addr_type ["u0"]
 		addr_val ["22"]
@@ -748,10 +743,10 @@ test_program! {
 	[
 		name [load_from_label_address]
 		tests [
-			["0u0"] 	-> [45, "Load(Regular,0x16,45i1)"]	: [ shared_metrics ]
-			["2u0"] 	-> [47, "Load(Regular,0x1A,47i1)"]	: [ shared_metrics ]
-			["5u0"] 	-> [50, "Load(Regular,0x20,50i1)"]	: [ shared_metrics ]
-			["7u0"] 	-> [52, "Load(Regular,0x24,52i1)"]	: [ shared_metrics ]
+			["0u0"] 	-> [45, "45i1"]	: [ shared_metrics ]
+			["2u0"] 	-> [47, "47i1"]	: [ shared_metrics ]
+			["5u0"] 	-> [50, "50i1"]	: [ shared_metrics ]
+			["7u0"] 	-> [52, "52i1"]	: [ shared_metrics ]
 		]
 		addr_type ["u0"]
 		addr_val ["data"]
@@ -759,10 +754,10 @@ test_program! {
 	[
 		name [load_from_relative_address]
 		tests [
-			["1i0"] 	-> [46, "Load(Regular,0x18,46i1)"]	: [ shared_metrics ]
-			["3i0"] 	-> [48, "Load(Regular,0x1C,48i1)"]	: [ shared_metrics ]
-			["5i0"] 	-> [50, "Load(Regular,0x20,50i1)"]	: [ shared_metrics ]
-			["7i0"] 	-> [52, "Load(Regular,0x24,52i1)"]	: [ shared_metrics ]
+			["1i0"] 	-> [46, "46i1"]	: [ shared_metrics ]
+			["3i0"] 	-> [48, "48i1"]	: [ shared_metrics ]
+			["5i0"] 	-> [50, "50i1"]	: [ shared_metrics ]
+			["7i0"] 	-> [52, "52i1"]	: [ shared_metrics ]
 		]
 		addr_type ["i0"]
 		addr_val ["12"]
@@ -770,10 +765,10 @@ test_program! {
 	[
 		name [load_from_relative_labels]
 		tests [
-			["0i0"] 	-> [45, "Load(Regular,0x16,45i1)"]	: [ shared_metrics ]
-			["2i0"] 	-> [47, "Load(Regular,0x1A,47i1)"]	: [ shared_metrics ]
-			["4i0"] 	-> [49, "Load(Regular,0x1E,49i1)"]	: [ shared_metrics ]
-			["6i0"] 	-> [51, "Load(Regular,0x22,51i1)"]	: [ shared_metrics ]
+			["0i0"] 	-> [45, "45i1"]	: [ shared_metrics ]
+			["2i0"] 	-> [47, "47i1"]	: [ shared_metrics ]
+			["4i0"] 	-> [49, "49i1"]	: [ shared_metrics ]
+			["6i0"] 	-> [51, "51i1"]	: [ shared_metrics ]
 		]
 		addr_type ["i0"]
 		addr_val ["load=>data"]
@@ -788,7 +783,7 @@ test_program! {
 				"const " addr_type "," addr_val
 				"add =>load"
 				"ret 1"
-	"load:"		"ld i1"
+	"load:"		"ld i1, =>0"
 				".bytes i1, -1"
 				".bytes i1, -1"
 				".bytes i1, -1"
@@ -814,21 +809,20 @@ test_program! {
 		TriggeredBranches	: 1
 		ConsumedOperands	: 2
 		ConsumedBytes		: 2
-		QueuedValues		: 1
-		QueuedValueBytes	: 1
-		QueuedReads			: 1
-		DataReads			: 0
-		DataReadBytes		: 0
+		QueuedValues		: 2
+		QueuedValueBytes	: 3
+		DataReads			: 1
+		DataReadBytes		: 2
 		InstructionReads	: 5
 		ReorderedOperands	: 2
 	];
 )]
 test_program! {
 	load_from_relative_indexed [
-		["0u0"] 	-> [45, "Load(Regular,0xC,45i1)"]	: [ shared_metrics ]
-		["2u0"] 	-> [46, "Load(Regular,0x10,46i1)"]	: [ shared_metrics ]
-		["5u0"] 	-> [47, "Load(Regular,0x16,47i1)"]	: [ shared_metrics ]
-		["7u0"] 	-> [48, "Load(Regular,0x1A,48i1)"]	: [ shared_metrics ]
+		["0u0"] 	-> [45, "45i1"]	: [ shared_metrics ]
+		["2u0"] 	-> [46, "46i1"]	: [ shared_metrics ]
+		["5u0"] 	-> [47, "47i1"]	: [ shared_metrics ]
+		["7u0"] 	-> [48, "48i1"]	: [ shared_metrics ]
 	]
 				// Jump past data
 				"echo =>jmp_at=>start=>1"
@@ -854,7 +848,7 @@ test_program! {
 				".bytes i1, -1"
 	"start:"	"ret 2"
 				"const i0, load=>data"
-	"load:"		"ld i1"
+	"load:"		"ld i1, =>0"
 }
 
 #[substitute_item(
@@ -863,9 +857,8 @@ test_program! {
 		TriggeredReturns	: 1
 		ConsumedOperands	: 3
 		ConsumedBytes		: 8 + (len*2)
-		QueuedValues		: 2
-		QueuedValueBytes	: 8 + len
-		QueuedReads			: 1
+		QueuedValues		: 3
+		QueuedValueBytes	: 16 + len
 		DataReads			: 1
 		DataReadBytes		: 8
 		StackReads			: 1
@@ -905,10 +898,8 @@ test_program! {
 		TriggeredReturns	: 2
 		ConsumedOperands	: 5
 		ConsumedBytes		: 17
-		QueuedValues		: 4
-		QueuedValueBytes	: 13
-		QueuedReads			: 1
-		DataReads			: 1
+		QueuedValues		: 5
+		QueuedValueBytes	: 17
 		DataReadBytes		: 4
 		StackReads			: 1
 		StackReadBytes		: 4
@@ -957,9 +948,8 @@ test_program! {
 		TriggeredReturns	: 2
 		ConsumedOperands	: 5
 		ConsumedBytes		: 9
-		QueuedValues		: 4
-		QueuedValueBytes	: 7
-		QueuedReads			: 1
+		QueuedValues		: 5
+		QueuedValueBytes	: 9
 		DataReads			: 1
 		DataReadBytes		: 2
 		StackReads			: 1
@@ -1008,9 +998,8 @@ test_program! {
 	    TriggeredReturns	: 1
 	    ConsumedOperands	: len*7
 	    ConsumedBytes		: len*7
-	    QueuedValues		: 1+(len*6)
-	    QueuedValueBytes	: 1+(len*6)
-	    QueuedReads			: len*2
+	    QueuedValues		: 1+(len*8)
+	    QueuedValueBytes	: 1+(len*8)
 	    ReorderedOperands	: 3+(len*7)
 	    InstructionReads	: 4+(len*10)
 	    DataReads			: len
@@ -1037,7 +1026,7 @@ test_program! {
 	"dup_size:"		"dup =>load_next, =>loop_end=>loop_start=>dec_size, =>"
 	"loop_cond:"	"jmp loop_start, loop_end"
 	"dup_addr:"		"dup =>load_next, =>loop_end=>loop_start=>dup_addr"
-	"load_next:"	"ld u0"
+	"load_next:"	"ld u0, =>0"
 					"dup =>compare, =>pre_pick"
 	"compare:"		"lt =>pick_max"				// check old max less than new
 	"pre_pick:"		"echo =>0"					// Pick either previous max (1) or new value (2)
@@ -1065,16 +1054,11 @@ test_program! {
 
 test_program! {
 	memcpy [
-		["255u0", "255u0", "0u0"]	->
-			[0, "Load(Regular,0x4C,0i0), Load(Regular,0x4D,0i0), Load(Regular,0x4E,0i0), Load(Regular,0x4F,0i0)"] : []
-		["75u0", "76u0", "1u0"]		->
-			[7, "Load(Regular,0x4C,7i0), Load(Regular,0x4D,0i0), Load(Regular,0x4E,0i0), Load(Regular,0x4F,0i0)"] : []
-		["74u0", "77u0", "2u0"]		->
-			[0, "Load(Regular,0x4C,0i0), Load(Regular,0x4D,5i0), Load(Regular,0x4E,7i0), Load(Regular,0x4F,0i0)"] : []
-		["73u0", "77u0", "3u0"]		->
-			[0, "Load(Regular,0x4C,0i0), Load(Regular,0x4D,3i0), Load(Regular,0x4E,5i0), Load(Regular,0x4F,7i0)"] : []
-		["72u0", "76u0", "4u0"]		->
-			[2, "Load(Regular,0x4C,2i0), Load(Regular,0x4D,3i0), Load(Regular,0x4E,5i0), Load(Regular,0x4F,7i0)"] : []
+		["255u0", "255u0", "0u0"]	->	[0, "0i0, 0i0, 0i0, 0i0"] : []
+		["75u0", "76u0", "1u0"]		->	[7, "7i0, 0i0, 0i0, 0i0"] : []
+		["74u0", "77u0", "2u0"]		->	[0, "0i0, 5i0, 7i0, 0i0"] : []
+		["73u0", "77u0", "3u0"]		->	[0, "0i0, 3i0, 5i0, 7i0"] : []
+		["72u0", "76u0", "4u0"]		->	[2, "2i0, 3i0, 5i0, 7i0"] : []
 	]
 						// Takes source address, destination address and length.
 						// Copies the source array with given length to the destination.
@@ -1086,7 +1070,7 @@ test_program! {
 	"dup_source:"		"dup =>load_next, =>inc_source"
 
 	"loop_start:"
-	"load_next:"		"ld u0" "echo =>store_copy"
+	"load_next:"		"ld u0, =>store_copy"
 	"dec_count:"		"sub Low, =>0"
 						"dup =>loop_cond, =>loop_end=>loop_start=>dec_count"
 	"loop_cond:"		"jmp loop_start, loop_end"
@@ -1109,17 +1093,18 @@ test_program! {
 						"nop"
 
 						"const u0, dst1"
-						"ld i0"
-						"echo =>return"
+						"ld i0, =>return"
 						"const u0, dst2"
-						"ld i0"
-						"echo =>return"
+						"ld i0, =>return"
 						"const u0, dst3"
-						"ld i0"
-						"echo =>return"
+						"ld i0, =>return"
 						"const u0, dst4"
-						"ld i0"
+						"ld i0, =>0"
 	"return:"
+						"nop"
+						"nop"
+						"nop"
+						"nop"
 	// Address: 72
 	"src:"
 						".bytes i0, 2"
@@ -1135,12 +1120,9 @@ test_program! {
 
 test_program! {
 	strcpy [
-		["63u0", "60u0"]	->
-			[255, "Load(Regular,0x3E,255u0), Load(Regular,0x3F,223u0), Load(Regular,0x40,0u0), Load(Regular,0x41,255u0)"] : []
-		["63u0", "59u0"]	->
-			[255, "Load(Regular,0x3E,255u0), Load(Regular,0x3F,211u0), Load(Regular,0x40,223u0), Load(Regular,0x41,0u0)"] : []
-		["62u0", "58u0"]	->
-			[199, "Load(Regular,0x3E,199u0), Load(Regular,0x3F,211u0), Load(Regular,0x40,223u0), Load(Regular,0x41,0u0)"] : []
+		["63u0", "60u0"]	->	[255, "255u0, 223u0, 0u0, 255u0"] : []
+		["63u0", "59u0"]	->	[255, "255u0, 211u0, 223u0, 0u0"] : []
+		["62u0", "58u0"]	->	[199, "199u0, 211u0, 223u0, 0u0"] : []
 	]
 					// Takes destination address and source address.
 					// Copies the string from source to destination including final null character
@@ -1150,7 +1132,7 @@ test_program! {
 
 	"loop_start:"
 	"dup_src:"			"dup =>load, =>inc_src"
-	"load:"				"ld u0"
+	"load:"				"ld u0, =>0"
 						"dup =>loop_cond, =>store"
 	"loop_cond:"		"jmp loop_start, loop_end"
 	"dup_dst:"			"dup =>store, =>0"
@@ -1168,17 +1150,17 @@ test_program! {
 						"nop"
 
 						"const u0, dst1"
-						"ld u0"
-						"echo =>return_at"
+						"ld u0, =>return_at"
 						"const u0, dst2"
-						"ld u0"
-						"echo =>return_at"
+						"ld u0, =>return_at"
 						"const u0, dst3"
-						"ld u0"
-						"echo =>return_at"
+						"ld u0, =>return_at"
 						"const u0, dst4"
-						"ld u0"
+						"ld u0, =>0"
 	"return_at:"
+						"nop"
+						"nop"
+						"nop"
 	// Address: 58
 	"src:"
 						".bytes u0, 199"
@@ -1305,9 +1287,8 @@ test_program! {
 	"fn_cmp_i8:"
 								"echo =>fn_cmp_i8_ld1, =>fn_cmp_i8_ld2"
 								"ret fn_cmp_i8_ret"
-	"fn_cmp_i8_ld1:"			"ld i0"
-								"echo =>fn_cmp_i8_sub"
-	"fn_cmp_i8_ld2:"			"ld i0"
+	"fn_cmp_i8_ld1:"			"ld i0, =>fn_cmp_i8_sub"
+	"fn_cmp_i8_ld2:"			"ld i0, =>0"
 	"fn_cmp_i8_sub:"			"sub =>0"
 	"fn_cmp_i8_ret:"
 
@@ -1395,26 +1376,25 @@ test_program! {
 								".bytes i1, 8"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// Addresses of comparison functions
-	"cmp_fns:"// Addr: 16
+	"cmp_fns:"// Addr: 18
 								".bytes u0, fn_cmp_i8"
 								".bytes u0, fn_cmp_i16"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// Addresses of arrays
-	"data_addr:" // Addr: 18
+	"data_addr:" // Addr: 20
 								".bytes u0, data_i8"
 								".bytes u0, data_i16"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// Store position for key to allow for getting its address, which is passed to bsearch
-	"key_store:" // Addr: 20
+	"key_store:" // Addr: 22
 								".bytes u1, 0"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// bsearch comparison of i8 pointers
-	"fn_cmp_i8:" // Addr: 22
+	"fn_cmp_i8:" // Addr: 24
 								"echo =>fn_cmp_i8_ld1, =>fn_cmp_i8_ld2"
 								"ret fn_cmp_i8_ret"
-	"fn_cmp_i8_ld1:"			"ld i0"
-								"echo =>fn_cmp_i8_sub"
-	"fn_cmp_i8_ld2:"			"ld i0"
+	"fn_cmp_i8_ld1:"			"ld i0, =>fn_cmp_i8_sub"
+	"fn_cmp_i8_ld2:"			"ld i0, =>0"
 	"fn_cmp_i8_sub:"			"sub =>0"
 	"fn_cmp_i8_ret:"
 	/////////////////////////////////////////////////////////////////////////////////////////////
@@ -1422,14 +1402,13 @@ test_program! {
 	"fn_cmp_i16:" // Addr: 34
 								"echo =>fn_cmp_i16_ld1, =>fn_cmp_i16_ld2"
 								"ret fn_cmp_i16_ret"
-	"fn_cmp_i16_ld1:"			"ld i1"
-								"echo =>fn_cmp_i16_sub"
-	"fn_cmp_i16_ld2:"			"ld i1"
+	"fn_cmp_i16_ld1:"			"ld i1, =>fn_cmp_i16_sub"
+	"fn_cmp_i16_ld2:"			"ld i1, =>0"
 	"fn_cmp_i16_sub:"			"sub =>0"
 	"fn_cmp_i16_ret:"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// Test setup
-	"entry:"
+	"entry:" // Addr: 44
 								"echo =>entry_store_key, =>entry_after_base, =>"
 								"dup =>echo_size, =>sub_size"
 								// First store the key, so that we can get its address
@@ -1441,16 +1420,13 @@ test_program! {
 								// Choose data array
 								"const u0, data_addr"
 	"calc_data_addr:"			"add =>0"
-								"ld u0"
-								// Pass base address, nitems, and size to bsearch
-								"echo =>entry_after_key"
+								"ld u0, =>entry_after_key" // Pass base address, nitems, and size to bsearch
 	"entry_after_base:"			"echo =>entry_after_key"
 	"echo_size:"				"echo =>entry_after_key"
 								// Choose comparison function and put its address on the stack
 								"const u0, cmp_fns"
 	"calc_cmp_fn:"				"add =>0"
-								"ld u0"
-								"echo =>entry_store_cmp_fn"
+								"ld u0, =>entry_store_cmp_fn"
 								"rsrv 2"
 	"entry_store_cmp_fn:"		"st [0]"
 								// Call bsearch
@@ -1479,20 +1455,20 @@ test_program! {
 
 	"fn_bsearch_loop_start:"
 	"fn_bsearch_dup_nr2:"				"dup =>fn_bsearch_pivot_half_elements, =>|=>fn_bsearch_dec_nr, =>"
-	
+
 										// Check iteration
 	"fn_bsearch_check_loop:"			"jmp fn_bsearch_loop_start, fn_bsearch_loop_end"
-	
+
 										// Issue call to comparison function
 										// these instruction are here to match with fn_bsearch_null
 										// So no operands from the loop are returned
 										"ld u0 [0]"
 										"call fn_bsearch_cmp_call_args"
-	
-	
+
+
 	"fn_bsearch_dup_key:"				"dup =>fn_bsearch_cmp_call_args, =>|=>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_key"
 	"fn_bsearch_dup_base:"				"dup =>fn_bsearch_pivot_add, =>|=>fn_bsearch_cap_base"
-	
+
 										// Calculate the pivot (element to compare)
 	"fn_bsearch_pivot_half_elements:"	"shr =>fn_bsearch_pivot_scale"
 	"fn_bsearch_dup_size:"				"dup =>|=>fn_bsearch_calc_right_base, =>|=>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_size, =>"
@@ -1500,24 +1476,24 @@ test_program! {
 	"fn_bsearch_pivot_add:"				"add Low, =>fn_bsearch_pivot_dup"
 	"fn_bsearch_pivot_dup:"				"dup =>fn_bsearch_cmp_call_args,\
 											 =>|=>(\
-											 	fn_bsearch_calc_right_base, \
-											 	fn_bsearch_check_jmp_loc=>fn_bsearch_equal=>fn_bsearch_equal_cap\
+												 fn_bsearch_calc_right_base, \
+												 fn_bsearch_check_jmp_loc=>fn_bsearch_equal=>fn_bsearch_equal_cap\
 											)"
-	
+
 										// Trigger call
 	"fn_bsearch_cmp_call_args:"
 										"dup =>fn_bsearch_check_equal, =>fn_bsearch_check_positive"
-	
+
 										// if 0, return pivot
 	"fn_bsearch_check_equal:"			"jmp fn_bsearch_equal, fn_bsearch_check_jmp_loc"
 	"fn_bsearch_check_positive:"		"gt =>fn_bsearch_choose_base"
-	
+
 										// decrement nr, then halve
 	"fn_bsearch_dec_nr:"				"sub =>fn_bsearch_halve_nr"
 	"fn_bsearch_halve_nr:"				"shr =>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_nr2"
-	
+
 	"fn_bsearch_check_jmp_loc:"
-	
+
 										// Calculate move right base
 	"fn_bsearch_cap_base:"				"echo =>fn_bsearch_choose_base"
 	"fn_bsearch_calc_right_base:"		"add Low, =>fn_bsearch_choose_base" // pivot + size
@@ -1548,7 +1524,7 @@ test_program! {
 	hexval [
 		["0u0"] 	-> [0, "0u0"]		: [  ]
 		["47u0"] 	-> [0, "0u0"]		: [  ]
-		
+
 		["48u0"] 	-> [0, "0u0"]		: [  ] // '0' - '9'
 		["49u0"] 	-> [1, "1u0"]		: [  ]
 		["50u0"] 	-> [2, "2u0"]		: [  ]
@@ -1559,20 +1535,20 @@ test_program! {
 		["55u0"] 	-> [7, "7u0"]		: [  ]
 		["56u0"] 	-> [8, "8u0"]		: [  ]
 		["57u0"] 	-> [9, "9u0"]		: [  ]
-		
+
 		["58u0"] 	-> [0, "0u0"]		: [  ]
 		["64u0"] 	-> [0, "0u0"]		: [  ]
-		
+
 		["65u0"] 	-> [10, "10u0"]		: [  ] // 'A' - 'F'
 		["66u0"] 	-> [11, "11u0"]		: [  ]
 		["67u0"] 	-> [12, "12u0"]		: [  ]
 		["68u0"] 	-> [13, "13u0"]		: [  ]
 		["69u0"] 	-> [14, "14u0"]		: [  ]
 		["70u0"] 	-> [15, "15u0"]		: [  ]
-		
+
 		["71u0"] 	-> [0, "0u0"]		: [  ]
 		["96u0"] 	-> [0, "0u0"]		: [  ]
-		
+
 		["97u0"] 	-> [10, "10u0"]		: [  ] // 'a' - 'f'
 		["98u0"] 	-> [11, "11u0"]		: [  ]
 		["99u0"] 	-> [12, "12u0"]		: [  ]
@@ -1591,7 +1567,7 @@ test_program! {
 					"jmp not_in_09, jmp_not_in_09"
 	"jmp_not_in_09:""ret return_in_09" // valid, return c-'0'
 	"return_in_09:"
-	
+
 	"not_in_09:"	// =>1 is c-48
 					"ret ret_0"
 	"dup_c:"		"dup =>check_a, =>check_A"
@@ -1610,7 +1586,7 @@ test_program! {
 					"const u0, 10"
 	"add_10:"		"add =>0"
 	"return_in_AF:"
-	
+
 	"not_in_AF:"    // not hex digit, return 0
 					"const u0, 0"
 	"ret_0:"
@@ -1620,7 +1596,7 @@ test_program! {
 	isxdigit [
 		["0u0"] 	-> [0, "0u0"]		: [  ]
 		["47u0"] 	-> [0, "0u0"]		: [  ]
-		
+
 		["48u0"] 	-> [1, "1u0"]		: [  ] // '0' - '9'
 		["49u0"] 	-> [1, "1u0"]		: [  ]
 		["50u0"] 	-> [1, "1u0"]		: [  ]
@@ -1631,20 +1607,20 @@ test_program! {
 		["55u0"] 	-> [1, "1u0"]		: [  ]
 		["56u0"] 	-> [1, "1u0"]		: [  ]
 		["57u0"] 	-> [1, "1u0"]		: [  ]
-		
+
 		["58u0"] 	-> [0, "0u0"]		: [  ]
 		["64u0"] 	-> [0, "0u0"]		: [  ]
-		
+
 		["65u0"] 	-> [1, "1u0"]		: [  ] // 'A' - 'F'
 		["66u0"] 	-> [1, "1u0"]		: [  ]
 		["67u0"] 	-> [1, "1u0"]		: [  ]
 		["68u0"] 	-> [1, "1u0"]		: [  ]
 		["69u0"] 	-> [1, "1u0"]		: [  ]
 		["70u0"] 	-> [1, "1u0"]		: [  ]
-		
+
 		["71u0"] 	-> [0, "0u0"]		: [  ]
 		["96u0"] 	-> [0, "0u0"]		: [  ]
-		
+
 		["97u0"] 	-> [1, "1u0"]		: [  ] // 'a' - 'f'
 		["98u0"] 	-> [1, "1u0"]		: [  ]
 		["99u0"] 	-> [1, "1u0"]		: [  ]
@@ -1660,14 +1636,14 @@ test_program! {
 	"sub_0:"		"sub Low, =>lt_10"
 					"const u0, 10"
 	"lt_10:"		"lt =>digit_or_letter"
-					
+
 					"const u0, 223" // used to ignore bit 5, the difference between 'a' and 'A'
 	"without_bit5:" "and =>sub_a"
 					"const u0, 65" // 'a'
 	"sub_a:"		"sub Low, =>lt_6"
 					"const u0, 6"
 	"lt_6:"			"lt =>digit_or_letter"
-	
+
 	"digit_or_letter:" "or =>0"
 	"return:"
 }
@@ -1715,21 +1691,21 @@ test_program! {
 						".bytes u0, 0"  // null
 						".bytes u0, 3"  // Non-digit
 						".bytes u0, 4"  // Non-digit
-	
+
 	"entry:" //22
 						"echo =>dup_addr"
 						"const u0, 0"
 						"dup =>shift_sum, =>add_sum"
-						
+
 	"loop_start:"
 						"const u0, 16"
 	"shift_sum:"		"mul Low, =>add_sum" // value * 16
 	"dup_addr:"			"dup =>ld_char, =>str_inc"
-	"ld_char:"			"ld u0" // next char
+	"ld_char:"			"ld u0, =>0" // next char
 						"dup =>isx_entry, =>check_null"
 	"str_inc:"			"add Low, =>loop_end=>loop_start=>dup_addr"
 	"add_sum:"			"add Low, =>loop_end=>loop_start=>shift_sum" // (value* 16) + hexval
-	
+
 						// isxdigit
 	"isx_entry:"		"dup =>isx_sub_0, =>isx_without_bit5"
 						"const u0, 48"
@@ -1747,19 +1723,19 @@ test_program! {
 	"isx_lt_6:"			"lt =>isx_digit_or_letter"
 	"isx_digit_or_letter:" "or =>should_loop"
 						// isxdigit end
-	
+
 	"check_null:"		"gt =>should_loop" // check not null
 	"should_loop:" 		"and =>0"
 						"dup =>check_loop, =>choose_val2"
 	"check_loop:"		"jmp loop_start, loop_end" // loop back as long as not NULL
-	
+
 						"const u0, 10"
 	"isx_sub_a_10:"		"add Low, =>choose_val"
 	"pre_choose_val:"	"echo =>0" // ensures sub_0 is the last operand
 	"choose_val:"		"pick =>pre_choose_val2"
 	"pre_choose_val2:"	"const u0, 0"
 	"choose_val2:"		"pick =>loop_end=>loop_start=>add_sum"
-	
+
 	"loop_end:"
 						"ret return"
 	"return:"
