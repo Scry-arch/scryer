@@ -5,8 +5,8 @@ use num_bigint::{BigInt, BigUint, Sign};
 use regex::Regex;
 use scry_asm::Assemble;
 use scry_sim::{
-	Block, BlockedMemory, CallFrameState, ExecError, ExecState, Executor, MemError, Memory, Metric,
-	MetricReporter, OperandList, OperandState, Scalar, StackFrame, TrackReport, Value, ValueType,
+	Block, BlockedMemory, CallFrameState, ExecError, ExecState, Executor, Metric, MetricReporter,
+	OperandList, Scalar, StackFrame, TrackReport, Value, ValueType,
 };
 use std::{collections::HashMap, time::Instant};
 
@@ -54,7 +54,7 @@ struct Cli
 	debug: bool,
 }
 
-fn parse_input(input: &String) -> OperandState<usize>
+fn parse_input(input: &String) -> Value
 {
 	let re = Regex::new(r"^(-?\d+)(u|i)(\d+)$").unwrap();
 	let caps = re.captures_iter(input.as_str()).next().unwrap();
@@ -91,40 +91,10 @@ fn parse_input(input: &String) -> OperandState<usize>
 	);
 	assert_eq!(value_bytes.len(), byte_size as usize);
 
-	OperandState::Ready(Value::singleton_typed(
-		typ,
-		Scalar::Val(value_bytes.into_boxed_slice()),
-	))
+	Value::singleton_typed(typ, Scalar::Val(value_bytes.into_boxed_slice()))
 }
 
-fn operand_to_value(
-	op: &OperandState<usize>,
-	reads: &Vec<(bool, usize, usize, ValueType)>,
-	memory: &mut impl Memory,
-) -> Result<Value, (MemError, usize)>
-{
-	match op
-	{
-		OperandState::Ready(val) => Ok(val.clone()),
-		OperandState::MustRead(idx) =>
-		{
-			if let Some((is_stack, addr, count, typ)) = reads.get(*idx)
-			{
-				assert!(*count == 1);
-				assert!(!is_stack);
-				let mut val = Value::new_nan_typed(typ.clone());
-				memory.read_data(*addr, &mut val, 1, &mut ())?;
-				Ok(val)
-			}
-			else
-			{
-				panic!("Issued load doesn't exist in list");
-			}
-		},
-	}
-}
-
-fn value_to_string(val: Value) -> String
+fn value_to_string(val: &Value) -> String
 {
 	let (mut val, typ, size_pow_2): (String, char, u8) = match val.value_type()
 	{
@@ -198,14 +168,12 @@ fn main()
 			ret_addr: 0,
 			branches: HashMap::new(),
 			op_queue,
-			reads: Vec::new(),
 			stack: base_stack.clone(),
 		},
 		frame_stack: vec![CallFrameState {
 			ret_addr: 0,
 			branches: HashMap::new(),
 			op_queue: HashMap::new(),
-			reads: Vec::new(),
 			stack: base_stack,
 		}],
 		stack_buffer,
@@ -231,17 +199,8 @@ fn main()
 		if state.frame_stack.len() == 0
 		{
 			// Done
-			if let Some(ready_list) = state.frame.op_queue.get(&0)
+			if let Some(returned_values) = state.frame.op_queue.get(&0)
 			{
-				let mut returned_values = Vec::new();
-
-				// Extract Values from all operands, both to ensure we can and to pretty print
-				for op in ready_list.iter()
-				{
-					returned_values
-						.push(operand_to_value(op, &state.frame.reads, &mut memory).unwrap());
-				}
-
 				if args.machine_mode
 				{
 					// Return the integer value of the first return operand or 123 if unavailable
@@ -259,23 +218,10 @@ fn main()
 				{
 					// Pretty print the returned operands
 					println!("----------  Returned Operands  ----------");
-					for (val, op) in returned_values.into_iter().zip(ready_list.iter())
+					for val in returned_values.iter()
 					{
 						let val_str = value_to_string(val);
-						if let OperandState::MustRead(idx) = op
-						{
-							let (stack, addr, _, _) = state.frame.reads[*idx];
-							print!(
-								"Load({},{:#X},{}), ",
-								if stack { "Stack" } else { "Regular" },
-								addr,
-								val_str
-							);
-						}
-						else
-						{
-							print!("{}, ", val_str);
-						}
+						print!("{}, ", val_str);
 					}
 
 					print_metrics(&tracker);
