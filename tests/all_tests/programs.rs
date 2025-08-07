@@ -990,6 +990,49 @@ test_program! {
 	"func1_end:"
 }
 
+// Tests the 'sadr' instruction returns the correct address
+#[duplicate_item(
+	name				size	index	result1		result2;
+	[stack_addr_0_0]	["0"]	["[0]"]	[0]			["65536u2"];
+	[stack_addr_0_1]	["0"]	["[1]"]	[1]			["65537u2"];
+	[stack_addr_1_0]	["1"]	["[0]"]	[0]			["65536u2"];
+	[stack_addr_1_1]	["1"]	["[1]"]	[2]			["65538u2"];
+)]
+test_program! {
+	name [
+		["1u0"] 	-> [result1, result2]	: [ ]
+	]
+				"sadr " size index
+				"echo =>end"
+				"ret end"
+	"end:"
+}
+
+// Tests the 'sadr' instruction returns the correct address after a function
+// call
+#[duplicate_item(
+	name							res		size	index	result1		result2;
+	[stack_addr_from_call_8_0_0]	["8"]	["0"]	["[0]"]	[8]			["65544u2"];
+	[stack_addr_from_call_16_1_10]	["16"]	["1"]	["[10]"][36]		["65572u2"];
+)]
+test_program! {
+	name [
+		["1u0"] 	-> [result1, result2]	: [ ]
+	]
+				"nop"
+				"rsrv " res ", Base"
+				"const u0, callee"
+				"call 0"
+				"echo =>end"
+				"free " res
+				"ret end"
+	"end:"
+	"callee:"
+				"ret callee_end"
+				"sadr " size index
+	"callee_end:"
+}
+
 #[substitute_item(
 	shared_metrics(len) [
 		IssuedBranches		: len-1
@@ -1186,7 +1229,6 @@ test_program! {
 		ConsumedBytes		: 3
 		QueuedValues		: 3
 		QueuedValueBytes	: 3
-		QueuedReads			: 0
 		ReorderedOperands	: 3
 		InstructionReads	: 8
 		DataReads			: 0
@@ -1228,7 +1270,6 @@ test_program! {
 		ConsumedBytes		: 3
 		QueuedValues		: 3
 		QueuedValueBytes	: 3
-		QueuedReads			: 0
 		ReorderedOperands	: 1
 		InstructionReads	: 7
 		DataReads			: 0

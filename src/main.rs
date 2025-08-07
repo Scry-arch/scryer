@@ -163,6 +163,7 @@ fn main()
 		base_size: 0,
 	};
 	let original_state = ExecState {
+		addr_space: 2, // 32-bit address space (for now)
 		address: 0,
 		frame: CallFrameState {
 			ret_addr: 0,
