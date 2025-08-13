@@ -1485,6 +1485,17 @@ test_program! {
 								".bytes u2, 0"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// bsearch
+	
+	"fn_bsearch_equal:"					// Pivot is what we are looking for, return its addr
+										"ret fn_bsearch_equal_end"
+	"fn_bsearch_equal_cap:"				"echo =>fn_bsearch_equal_pick" // capture size + pivot
+										"nop"	// ignore in-flight operands
+										"nop"
+	"fn_bsearch_equal_pick:"			"const u0, 1"					// substitute for immediate pick
+										"pick =>fn_bsearch_equal_end"
+										// Return pivot address
+	"fn_bsearch_equal_end:"
+	
 	"fn_bsearch:"
 										"echo =>fn_bsearch_dup_key, =>fn_bsearch_dup_base, =>"
 										"echo =>fn_bsearch_dup_nr, =>fn_bsearch_dup_size"
@@ -1526,7 +1537,8 @@ test_program! {
 										"dup =>fn_bsearch_check_equal, =>fn_bsearch_check_positive"
 
 										// if 0, return pivot
-	"fn_bsearch_check_equal:"			"jmp fn_bsearch_equal, fn_bsearch_check_jmp_loc"
+	"fn_bsearch_check_equal:"			"eq =>0"
+										"jmp fn_bsearch_equal, fn_bsearch_check_jmp_loc"
 	"fn_bsearch_check_positive:"		"gt =>fn_bsearch_choose_base"
 
 										// decrement nr, then halve
@@ -1548,16 +1560,6 @@ test_program! {
 										"const u0, 0"
 	"fn_bsearch_null_end:"
 	"fn_bsearch_end:"
-
-	"fn_bsearch_equal:"					// Pivot is what we are looking for, return its addr
-										"ret fn_bsearch_equal_end"
-	"fn_bsearch_equal_cap:"				"echo =>fn_bsearch_equal_pick" // capture size + pivot
-										"nop"	// ignore in-flight operands
-										"nop"
-	"fn_bsearch_equal_pick:"			"const u0, 1"					// substitute for immediate pick
-										"pick =>fn_bsearch_equal_end"
-										// Return pivot address
-	"fn_bsearch_equal_end:"
 
 }
 
