@@ -610,6 +610,7 @@ checksum = "8a0d197bd2c9dc6e53b84da9556a69ba4cdfab8619eb41a8bd1cc2027a0f6b1d"
 [[package]]
 name = "scry_asm"
 version = "0.0.0"
+source = "git+https://github.com/scry-arch/scry_asm.git#0010ec9ad2db25f79d779cebf2162b7065b2117f"
 dependencies = [
  "byteorder",
  "duplicate 0.4.1",
@@ -617,11 +618,13 @@ dependencies = [
  "quickcheck_macros",
  "regex",
  "scry_isa",
+ "syn 1.0.109",
 ]
 
 [[package]]
 name = "scry_isa"
-version = "0.1.0"
+version = "0.0.0"
+source = "git+https://github.com/scry-arch/scry_isa.git#2a8b269f8c105c6dada8422ef378a1ac722520fb"
 dependencies = [
  "duplicate 2.0.0",
  "dyn-clone",
@@ -629,6 +632,7 @@ dependencies = [
  "num-traits",
  "paste",
  "petgraph",
+ "proc-macro2",
  "quickcheck",
  "variant_count",
 ]
@@ -636,6 +640,7 @@ dependencies = [
 [[package]]
 name = "scry_sim"
 version = "0.0.0"
+source = "git+https://github.com/scry-arch/scry_sim.git#b2f2b517e32b7a200436e61fd004b35e8634f352"
 dependencies = [
  "bitvec",
  "byteorder",
@@ -644,10 +649,12 @@ dependencies = [
  "num-traits",
  "paste",
  "quickcheck",
- "scry_asm",
  "scry_isa",
  "strum",
  "strum_macros",
+ "syn 1.0.109",
+ "syn 2.0.102",
+ "tap",
 ]
 
 [[package]]
@@ -775,12 +782,13 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "variant_count"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aae2faf80ac463422992abf4de234731279c058aaf33171ca70277c98406b124"
+checksum = "a1935e10c6f04d22688d07c0790f2fc0e1b1c5c2c55bc0cc87ed67656e587dd8"
 dependencies = [
+ "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.102",
 ]
 
 [[package]]

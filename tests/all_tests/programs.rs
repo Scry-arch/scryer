@@ -1485,7 +1485,7 @@ test_program! {
 								".bytes u2, 0"
 	/////////////////////////////////////////////////////////////////////////////////////////////
 	// bsearch
-	
+
 	"fn_bsearch_equal:"					// Pivot is what we are looking for, return its addr
 										"ret fn_bsearch_equal_end"
 	"fn_bsearch_equal_cap:"				"echo =>fn_bsearch_equal_pick" // capture size + pivot
@@ -1495,7 +1495,7 @@ test_program! {
 										"pick =>fn_bsearch_equal_end"
 										// Return pivot address
 	"fn_bsearch_equal_end:"
-	
+
 	"fn_bsearch:"
 										"echo =>fn_bsearch_dup_key, =>fn_bsearch_dup_base, =>"
 										"echo =>fn_bsearch_dup_nr, =>fn_bsearch_dup_size"
