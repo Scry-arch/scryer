@@ -1,5 +1,5 @@
 use crate::TEMPORARY_DIR;
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::predicate;
 use scry_sim::Metric;
 use std::{
@@ -24,7 +24,7 @@ fn timeout_instructions(instr_timeout: u16)
 {
 	let file = temp_infinite_loop_program();
 
-	let mut cmd = Command::cargo_bin("scryer").unwrap();
+	let mut cmd = cargo_bin_cmd!("scryer");
 	cmd.arg(file.path())
 		.arg(format!("--timeout={}", instr_timeout.to_string()))
 		.arg("--timeout-type=instructions");
@@ -49,7 +49,7 @@ fn timeout_second(second_timeout: u16, machine_mode: bool)
 {
 	let file = temp_infinite_loop_program();
 
-	let mut cmd = Command::cargo_bin("scryer").unwrap();
+	let mut cmd = cargo_bin_cmd!("scryer");
 	cmd.arg(file.path())
 		.arg(format!("--timeout={}", second_timeout.to_string()))
 		.arg("--timeout-type=seconds");
@@ -83,7 +83,7 @@ fn no_timeout(test_timeout: u64, timeout_type: &'static str, machine_mode: bool)
 {
 	let file = temp_infinite_loop_program();
 
-	let mut cmd = Command::cargo_bin("scryer").unwrap();
+	let mut cmd = cargo_bin_cmd!("scryer");
 	cmd.arg(file.path())
 		.arg("--timeout=0")
 		.arg("--timeout-type=".to_owned() + timeout_type);

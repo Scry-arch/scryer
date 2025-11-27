@@ -61,8 +61,9 @@ fn parse_input(input: &String) -> Value
 	let re = Regex::new(r"^(-?\d+)(u|i)(\d+)$").unwrap();
 	let caps = re.captures_iter(input.as_str()).next().unwrap();
 
-	let byte_size_pow_2: u8 = caps[3].parse().unwrap();
-	let byte_size = 1 << byte_size_pow_2;
+	let bit_size: u8 = caps[3].parse().unwrap();
+	let byte_size = bit_size / 8;
+	let byte_size_pow_2 = byte_size.ilog2() as u8;
 	let signed = &caps[2] == "i";
 	let typ = if signed
 	{
@@ -103,12 +104,12 @@ fn value_to_string(val: &Value) -> String
 		ValueType::Uint(x) =>
 		{
 			let int = BigUint::from_bytes_le(val.iter().next().unwrap().bytes().unwrap());
-			(int.to_string(), 'u', x)
+			(int.to_string(), 'u', 2u8.pow(x as u32) * 8)
 		},
 		ValueType::Int(x) =>
 		{
 			let int = BigInt::from_signed_bytes_le(val.iter().next().unwrap().bytes().unwrap());
-			(int.to_string(), 'i', x)
+			(int.to_string(), 'i', 2u8.pow(x as u32) * 8)
 		},
 	};
 	val.push(typ);
