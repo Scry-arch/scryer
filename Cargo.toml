@@ -20,3 +20,6 @@ duplicate = "2.0.0"
 [features]
 default = []
 fail-on-warnings = [] # Forces compilation to fail if any warnings are given. Used in CI.
+
+[[bin]]
+name = "scryer"

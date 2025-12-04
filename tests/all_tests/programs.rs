@@ -1033,6 +1033,44 @@ test_program! {
 	"callee_end:"
 }
 
+// Tests the combination of 'const' and 'grow'
+#[duplicate_item(
+	name						result1		result2	code;
+	[immediate_0u8]				[0]			["0u8"]	[
+		"const u8, 0"
+	];
+	[immediate_21576u16]		[72]			["21576u16"]	[
+		"const u16, 84"
+		"grow 72"
+	];
+	[immediate_6309412i32]		[36]			["6309412i32"]	[
+		"const i32, 96"
+		"grow 70"
+		"grow 36"
+	];
+	[immediate_2613597195u32]	[11]			["2613597195u32"]	[
+		"const u32, 155"
+		"grow 200"
+		"grow 84"
+		"grow 11"
+	];
+	[immediate_211732052817i64]	[81]			["211732052817i64"]	[
+		"const i64, 49"
+		"grow 76"
+		"grow 54"
+		"grow 187"
+		"grow 81"
+	];
+)]
+test_program! {
+	name [
+		["0u8"] 	-> [result1, result2]	: [ ]
+	]
+				"ret end"
+				code
+	"end:"
+}
+
 #[substitute_item(
 	shared_metrics(len) [
 		IssuedBranches		: len-1
