@@ -626,7 +626,7 @@ dependencies = [
 [[package]]
 name = "scry_sim"
 version = "0.0.0"
-source = "git+https://github.com/scry-arch/scry_sim.git#ebd5babf96415d1dbadc3d98df38cec571b01249"
+source = "git+https://github.com/scry-arch/scry_sim.git#88301660358e23d830bc2794a5792c46712d52b7"
 dependencies = [
  "bitvec",
  "byteorder",

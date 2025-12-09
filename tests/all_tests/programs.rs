@@ -234,11 +234,11 @@ test_program! {
 }
 
 #[substitute_item(
-	shared_metrics(operand_bytes) [
+	shared_metrics(operand_bytes, minus_consumed) [
 		IssuedReturns		: 1
 		TriggeredReturns	: 1
 		ConsumedOperands	: 3
-		ConsumedBytes		: operand_bytes*3
+		ConsumedBytes		: (operand_bytes*3)-minus_consumed
 		QueuedValues		: 2
 		QueuedValueBytes	: operand_bytes*2
 		InstructionReads	: 3
@@ -246,10 +246,13 @@ test_program! {
 )]
 test_program! {
 	add_increment [
-		["0u64", "0u64"]		-> [1, "1u64"]		: [ shared_metrics([8]) ]
-		["0u32", "123u32"]	-> [124, "124u32"]	: [ shared_metrics([4]) ]
-		["-1i16", "4i16"]		-> [4, "4i16"]		: [ shared_metrics([2]) ]
-		["2i8", "-22i8"]	-> [237, "-19i8"]	: [ shared_metrics([1]) ]
+		["0u64", "0u64"]		-> [1, "1u64"]		: [ shared_metrics([8],[0]) ]
+		["0u32", "123u32"]		-> [124, "124u32"]	: [ shared_metrics([4],[0]) ]
+		["-1i16", "4i16"]		-> [4, "4i16"]		: [ shared_metrics([2],[0]) ]
+		["2i8", "-22i8"]		-> [237, "-19i8"]	: [ shared_metrics([1],[0]) ]
+		["1i16", "-1i8"]		-> [1, "1i16"]		: [ shared_metrics([2],[1]) ]
+		["668i16", "247u32"]	-> [148, "916u32"]	: [ shared_metrics([4],[2]) ]
+		["56797u64", "57u8"]	-> [23, "56855u64"]	: [ shared_metrics([8],[7]) ]
 	]
 				"add =>0"
 				"add Low =>ret_at"
