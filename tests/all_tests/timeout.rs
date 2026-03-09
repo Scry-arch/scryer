@@ -27,7 +27,8 @@ fn timeout_instructions(instr_timeout: u16)
 	let mut cmd = cargo_bin_cmd!("scryer");
 	cmd.arg(file.path())
 		.arg(format!("--timeout={}", instr_timeout.to_string()))
-		.arg("--timeout-type=instructions");
+		.arg("--timeout-type=instructions")
+		.arg("--target=assembly");
 
 	// Test that a timeout is messaged
 	let timeout_msg = r"Timeout(.)*?\n(.|\n)*?".to_owned();
@@ -52,7 +53,8 @@ fn timeout_second(second_timeout: u16, machine_mode: bool)
 	let mut cmd = cargo_bin_cmd!("scryer");
 	cmd.arg(file.path())
 		.arg(format!("--timeout={}", second_timeout.to_string()))
-		.arg("--timeout-type=seconds");
+		.arg("--timeout-type=seconds")
+		.arg("--target=assembly");
 	if machine_mode
 	{
 		cmd.arg("--machine-mode");
@@ -86,7 +88,8 @@ fn no_timeout(test_timeout: u64, timeout_type: &'static str, machine_mode: bool)
 	let mut cmd = cargo_bin_cmd!("scryer");
 	cmd.arg(file.path())
 		.arg("--timeout=0")
-		.arg("--timeout-type=".to_owned() + timeout_type);
+		.arg("--timeout-type=".to_owned() + timeout_type)
+		.arg("--target=assembly");
 	if !machine_mode
 	{
 		cmd.arg("--machine-mode");

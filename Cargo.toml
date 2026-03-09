@@ -9,6 +9,7 @@ scry_asm = { git = "https://github.com/scry-arch/scry_asm.git" }
 clap = { version = "4.0.8", features = ["derive"] }
 regex = "1.6.0"
 num-bigint = "0.4.3"
+object = { git = "https://github.com/scry-arch/rust-object.git", features = ["build"] }
 
 [dev-dependencies]
 assert_cmd = "2.0.4"

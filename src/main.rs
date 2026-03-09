@@ -4,11 +4,12 @@ mod simulator;
 
 use clap::Parser;
 use num_bigint::{BigInt, BigUint, Sign};
+use object::{elf::PT_LOAD, Object, ObjectSegment};
 use regex::Regex;
 use scry_asm::Assemble;
 use scry_sim::{
-	Block, BlockedMemory, CallFrameState, ExecError, ExecState, Executor, Metric, MetricReporter,
-	OperandList, Scalar, StackFrame, TrackReport, Value, ValueType,
+	Block, BlockedMemory, CallFrameState, ExecError, ExecState, Executor, Memory, Metric,
+	MetricReporter, OperandList, Scalar, StackFrame, TrackReport, Value, ValueType,
 };
 use std::{collections::HashMap, time::Instant};
 
@@ -17,6 +18,19 @@ enum TimeoutType
 {
 	Instructions,
 	Seconds,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum Target
+{
+	/// Tries to detect the target automatically
+	Auto,
+	/// Raw binary file containing only encoded instructions
+	Raw,
+	/// File containing textual assembly
+	Assembly,
+	/// ELF file
+	ScryUnknownNoneElf32,
 }
 
 /// Command-line arguments
@@ -32,10 +46,10 @@ struct Cli
 	#[clap(short, long)]
 	machine_mode: bool,
 
-	/// Signals that the file is a binary assembly file (i.e. not text
-	/// assembly).
-	#[clap(short, long)]
-	binary: bool,
+	/// The target triple of the input file
+	#[clap(long)]
+	#[arg(value_enum, default_value_t = Target::Auto)]
+	target: Target,
 
 	/// Input operand to the first instruction.
 	/// Can be given multiple times for multiple input operands.
@@ -135,17 +149,58 @@ fn main()
 
 	let contents = std::fs::read(args.path).unwrap();
 
-	let program = if args.binary
+	let mut memory = match args.target
 	{
-		contents
-	}
-	else
-	{
-		// File is in textual assembly, assemble it
-		scry_asm::Raw::assemble(std::iter::once(
-			String::from_utf8(contents).unwrap().as_str(),
-		))
-		.unwrap()
+		Target::Auto =>
+		{
+			unimplemented!()
+		},
+		Target::Raw => BlockedMemory::new(contents.into_iter(), 0),
+		Target::Assembly =>
+		{
+			// File is in textual assembly, assemble it
+			let program = scry_asm::Raw::assemble(std::iter::once(
+				String::from_utf8(contents).unwrap().as_str(),
+			))
+			.unwrap();
+
+			BlockedMemory::new(program.into_iter(), 0)
+		},
+		Target::ScryUnknownNoneElf32 =>
+		{
+			if let object::File::Elf32(elf) = object::File::parse(&*contents).unwrap()
+			{
+				let mut mem = BlockedMemory::empty();
+				let mut found_ex = false;
+				for segment in elf.segments()
+				{
+					if segment.elf_program_header().p_type.get(elf.endianness()) == PT_LOAD
+						&& segment.permissions().executable()
+					{
+						assert!(!found_ex);
+						found_ex = true;
+
+						let addr = 0; // Always start executing at 0
+						let size = segment.size() as usize;
+
+						mem.add_block_zeroed(addr, size);
+
+						if let Ok(data) = segment.data()
+						{
+							assert!(size <= data.len());
+							data.iter()
+								.enumerate()
+								.for_each(|(i, b)| mem.write_raw(addr + i, *b).unwrap())
+						}
+					}
+				}
+				mem
+			}
+			else
+			{
+				unimplemented!()
+			}
+		},
 	};
 
 	// Ready inputs
@@ -187,8 +242,10 @@ fn main()
 	{
 		dbg!(&original_state);
 	}
-	let mut memory = BlockedMemory::new(program.into_iter(), 0);
+
+	// Add stack memery block
 	memory.add_block((0..stack_buffer).map(|_| 0), stack_base);
+
 	let mut res =
 		Executor::<BlockedMemory, _>::from_state(&original_state, &mut memory).step(&mut tracker);
 	while res.is_ok()

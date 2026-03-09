@@ -1,10 +1,26 @@
 use crate::TEMPORARY_DIR;
 use assert_cmd::cargo::cargo_bin_cmd;
 use duplicate::{duplicate_item, substitute_item};
+use object::{
+	build::elf::{Builder, SectionData},
+	elf::*,
+	Endianness,
+};
 use predicates::prelude::predicate;
 use scry_asm::Assemble;
 use scry_sim::{Metric, Metric::*, MetricReporter, TrackReport};
 use std::{io::Write, iter::once, time::Duration};
+
+/// Program file target types to test
+enum Target
+{
+	/// Raw binary file containing only encoded instructions
+	Raw,
+	/// File containing textual assembly
+	Assembly,
+	/// ELF file
+	ScryUnknownNoneElf32,
+}
 
 /// Tests that the given assembly program can be simulated with the given inputs
 /// to produce the given output.
@@ -24,22 +40,98 @@ fn test_program<const INS: usize>(
 	inputs: [&str; INS],
 	expected_mahine_result: u8,
 	expected_result: &str,
-	test_binary: bool,
+	test_target: Target,
 	machine_mode: bool,
 	expected_metrics: TrackReport,
 ) -> Result<(), Box<dyn std::error::Error>>
 {
-	let file_content = if test_binary
+	let assembled = scry_asm::Raw::assemble(program.iter().cloned())?;
+	let file_content = match test_target
 	{
-		scry_asm::Raw::assemble(program.iter().cloned()).unwrap()
-	}
-	else
-	{
-		program
-			.iter()
-			.flat_map(|snippet| snippet.as_bytes().into_iter().chain(once(&('\n' as u8))))
-			.cloned()
-			.collect()
+		Target::Raw => assembled,
+		Target::Assembly =>
+		{
+			program
+				.iter()
+				.flat_map(|snippet| snippet.as_bytes().into_iter().chain(once(&('\n' as u8))))
+				.cloned()
+				.collect()
+		},
+		Target::ScryUnknownNoneElf32 =>
+		{
+			let mut elf = Builder::new(Endianness::Little, false);
+			elf.header.os_abi = ELFOSABI_NONE;
+			elf.header.e_type = ET_EXEC;
+			elf.header.e_machine = EM_SCRY;
+			elf.header.e_phoff = elf.file_header_size() as u64;
+
+			// Create segments
+			let phdr_seg = elf.segments.add().id();
+			let load_1_seg = elf.segments.add_load_segment(0, 4).id();
+			let load_2_seg = elf.segments.add_load_segment(0, 4).id();
+			let phdr_size = elf.program_headers_size() as u64;
+
+			// Config PHDR segment
+			elf.segments.get_mut(phdr_seg).p_type = PT_PHDR;
+			elf.segments.get_mut(phdr_seg).p_offset = elf.header.e_phoff;
+			elf.segments.get_mut(phdr_seg).p_flags = PF_R;
+			elf.segments.get_mut(phdr_seg).p_align = 4;
+
+			// Config segment to contain sections: PHDR
+			elf.segments.get_mut(load_1_seg).p_offset = elf.header.e_phoff;
+			elf.segments.get_mut(load_1_seg).p_vaddr = 0;
+			elf.segments.get_mut(load_1_seg).p_paddr = 0;
+			elf.segments.get_mut(load_1_seg).p_flags = PF_R;
+
+			// Add PHDR to the load segment through a fake section
+			let phdr_sec_id = elf.sections.add().id();
+			elf.sections.get_mut(phdr_sec_id).sh_size = phdr_size;
+			elf.sections.get_mut(phdr_sec_id).sh_offset = elf.header.e_phoff;
+			elf.segments
+				.get_mut(load_1_seg)
+				.append_section_range(elf.sections.get_mut(phdr_sec_id));
+			elf.segments.get_mut(load_1_seg).p_memsz = phdr_size;
+			elf.segments.get_mut(load_1_seg).p_filesz = phdr_size;
+			elf.sections.get_mut(phdr_sec_id).delete = true;
+
+			elf.segments.get_mut(phdr_seg).p_filesz = phdr_size;
+			elf.segments.get_mut(phdr_seg).p_memsz = phdr_size;
+			elf.segments.get_mut(load_1_seg).p_filesz = phdr_size;
+			elf.segments.get_mut(load_1_seg).p_memsz = phdr_size;
+
+			// Config segment to contain sections: .text
+			elf.segments.get_mut(load_2_seg).p_offset =
+				elf.segments.get(load_1_seg).p_offset + elf.segments.get(load_1_seg).p_filesz;
+			elf.segments.get_mut(load_2_seg).p_vaddr =
+				elf.segments.get(load_1_seg).p_vaddr + elf.segments.get(load_1_seg).p_filesz;
+			elf.segments.get_mut(load_2_seg).p_paddr = elf.segments.get(load_2_seg).p_vaddr;
+			elf.segments.get_mut(load_2_seg).p_flags = PF_R | PF_X;
+
+			// Create .text section
+			let text_section = elf.sections.add();
+			text_section.name = ".text".into();
+			text_section.sh_type = SHT_PROGBITS;
+			text_section.sh_addralign = 4;
+			text_section.sh_size = assembled.len() as u64;
+			text_section.sh_flags = (SHF_ALLOC | SHF_EXECINSTR) as u64;
+			text_section.data = SectionData::Data(assembled.into());
+
+			elf.segments
+				.get_mut(load_2_seg)
+				.append_section(text_section);
+
+			// Set program entry point to .text section start
+			elf.header.e_entry = elf.segments.get(load_2_seg).p_paddr;
+
+			// Create section header string table section
+			let shstrtab_section = elf.sections.add();
+			shstrtab_section.name = ".shstrtab".into();
+			shstrtab_section.data = SectionData::SectionString;
+
+			let mut out = object::write::StreamingBuffer::new(Vec::new());
+			elf.write(&mut out)?;
+			out.into_inner()
+		},
 	};
 
 	// Output program to a file
@@ -55,10 +147,12 @@ fn test_program<const INS: usize>(
 	{
 		cmd.arg("--machine-mode");
 	}
-	if test_binary
+	cmd.arg(match test_target
 	{
-		cmd.arg("--binary");
-	}
+		Target::Raw => "--target=raw",
+		Target::Assembly => "--target=assembly",
+		Target::ScryUnknownNoneElf32 => "--target=scry-unknown-none-elf32",
+	});
 	for input in inputs
 	{
 		cmd.arg("-i=".to_owned() + input);
@@ -76,8 +170,6 @@ fn test_program<const INS: usize>(
 	}
 	else
 	{
-		// print!("{}",std::str::from_utf8(assert.get_output().stderr.as_slice()).
-		// unwrap());
 		assert.success().stdout(
 			predicate::str::is_match(
 				"Returned Operands(.)*?\\n".to_owned()
@@ -174,25 +266,37 @@ macro_rules! test_program {
 			#[allow(non_snake_case)]
 			fn [< $name _assembly>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					false, false, [$(($metric, $value),)*].into())
+					Target::Assembly, false, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _binary>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					true, false, [$(($metric, $value),)*].into())
+					Target::Raw, false, [$(($metric, $value),)*].into())
+			}
+			#[test]
+			#[allow(non_snake_case)]
+			fn [< $name _elf>]() -> Result<(), Box<dyn std::error::Error>>{
+				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
+					Target::ScryUnknownNoneElf32, false, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _assembly_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					false, true, [$(($metric, $value),)*].into())
+					Target::Assembly, true, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _binary_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					true, true, [$(($metric, $value),)*].into())
+					Target::Raw, true, [$(($metric, $value),)*].into())
+			}
+			#[test]
+			#[allow(non_snake_case)]
+			fn [< $name _elf_machine>]() -> Result<(), Box<dyn std::error::Error>>{
+				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
+					Target::ScryUnknownNoneElf32, true, [$(($metric, $value),)*].into())
 			}
 		}
 		test_program!{
@@ -1776,7 +1880,7 @@ test_program! {
 						".bytes u8, 3"  // Non-digit
 						".bytes u8, 4"  // Non-digit
 
-	"entry:" //22
+	"entry:" //26
 						"echo =>dup_addr"
 						"const u8, 0"
 						"dup =>shift_sum, =>add_sum"
