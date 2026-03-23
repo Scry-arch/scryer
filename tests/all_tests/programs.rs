@@ -1,11 +1,6 @@
-use crate::TEMPORARY_DIR;
+use crate::{all_tests::create_test_elf, TEMPORARY_DIR};
 use assert_cmd::cargo::cargo_bin_cmd;
 use duplicate::{duplicate_item, substitute_item};
-use object::{
-	build::elf::{Builder, SectionData},
-	elf::*,
-	Endianness,
-};
 use predicates::prelude::predicate;
 use scry_asm::Assemble;
 use scry_sim::{Metric, Metric::*, MetricReporter, TrackReport};
@@ -59,75 +54,7 @@ fn test_program<const INS: usize>(
 		},
 		Target::ScryUnknownNoneElf32 =>
 		{
-			let mut elf = Builder::new(Endianness::Little, false);
-			elf.header.os_abi = ELFOSABI_NONE;
-			elf.header.e_type = ET_EXEC;
-			elf.header.e_machine = EM_SCRY;
-			elf.header.e_phoff = elf.file_header_size() as u64;
-
-			// Create segments
-			let phdr_seg = elf.segments.add().id();
-			let load_1_seg = elf.segments.add_load_segment(0, 4).id();
-			let load_2_seg = elf.segments.add_load_segment(0, 4).id();
-			let phdr_size = elf.program_headers_size() as u64;
-
-			// Config PHDR segment
-			elf.segments.get_mut(phdr_seg).p_type = PT_PHDR;
-			elf.segments.get_mut(phdr_seg).p_offset = elf.header.e_phoff;
-			elf.segments.get_mut(phdr_seg).p_flags = PF_R;
-			elf.segments.get_mut(phdr_seg).p_align = 4;
-
-			// Config segment to contain sections: PHDR
-			elf.segments.get_mut(load_1_seg).p_offset = elf.header.e_phoff;
-			elf.segments.get_mut(load_1_seg).p_vaddr = 0;
-			elf.segments.get_mut(load_1_seg).p_paddr = 0;
-			elf.segments.get_mut(load_1_seg).p_flags = PF_R;
-
-			// Add PHDR to the load segment through a fake section
-			let phdr_sec_id = elf.sections.add().id();
-			elf.sections.get_mut(phdr_sec_id).sh_size = phdr_size;
-			elf.sections.get_mut(phdr_sec_id).sh_offset = elf.header.e_phoff;
-			elf.segments
-				.get_mut(load_1_seg)
-				.append_section_range(elf.sections.get_mut(phdr_sec_id));
-			elf.segments.get_mut(load_1_seg).p_memsz = phdr_size;
-			elf.segments.get_mut(load_1_seg).p_filesz = phdr_size;
-			elf.sections.get_mut(phdr_sec_id).delete = true;
-
-			elf.segments.get_mut(phdr_seg).p_filesz = phdr_size;
-			elf.segments.get_mut(phdr_seg).p_memsz = phdr_size;
-			elf.segments.get_mut(load_1_seg).p_filesz = phdr_size;
-			elf.segments.get_mut(load_1_seg).p_memsz = phdr_size;
-
-			// Config segment to contain sections: .text
-			elf.segments.get_mut(load_2_seg).p_offset =
-				elf.segments.get(load_1_seg).p_offset + elf.segments.get(load_1_seg).p_filesz;
-			elf.segments.get_mut(load_2_seg).p_vaddr =
-				elf.segments.get(load_1_seg).p_vaddr + elf.segments.get(load_1_seg).p_filesz;
-			elf.segments.get_mut(load_2_seg).p_paddr = elf.segments.get(load_2_seg).p_vaddr;
-			elf.segments.get_mut(load_2_seg).p_flags = PF_R | PF_X;
-
-			// Create .text section
-			let text_section = elf.sections.add();
-			text_section.name = ".text".into();
-			text_section.sh_type = SHT_PROGBITS;
-			text_section.sh_addralign = 4;
-			text_section.sh_size = assembled.len() as u64;
-			text_section.sh_flags = (SHF_ALLOC | SHF_EXECINSTR) as u64;
-			text_section.data = SectionData::Data(assembled.into());
-
-			elf.segments
-				.get_mut(load_2_seg)
-				.append_section(text_section);
-
-			// Set program entry point to .text section start
-			elf.header.e_entry = elf.segments.get(load_2_seg).p_paddr;
-
-			// Create section header string table section
-			let shstrtab_section = elf.sections.add();
-			shstrtab_section.name = ".shstrtab".into();
-			shstrtab_section.data = SectionData::SectionString;
-
+			let elf = create_test_elf(assembled.as_slice(), 0);
 			let mut out = object::write::StreamingBuffer::new(Vec::new());
 			elf.write(&mut out)?;
 			out.into_inner()

@@ -53,6 +53,9 @@ struct Cli
 
 	/// Input operand to the first instruction.
 	/// Can be given multiple times for multiple input operands.
+	/// Must give value and its type. E.g. '1u8' is an unsigned byte of value 1.
+	/// Can give relative to a known label. E.g. 'entry+1u8' is an unsigned byte
+	/// of value one higher than the 'entry' label.
 	#[clap(short, long)]
 	input: Vec<String>,
 
@@ -70,15 +73,28 @@ struct Cli
 	debug: bool,
 }
 
-fn parse_input(input: &String) -> Value
+fn parse_input(input: &String, labels: HashMap<&str, usize>) -> Value
 {
-	let re = Regex::new(r"^(-?\d+)(u|i)(\d+)$").unwrap();
+	let re = Regex::new(r"^((.+)\+)?(-?\d+)(u|i)(\d+)$").unwrap();
 	let caps = re.captures_iter(input.as_str()).next().unwrap();
 
-	let bit_size: u8 = caps[3].parse().unwrap();
+	let bit_size: u8 = caps[5].parse().unwrap();
 	let byte_size = bit_size / 8;
 	let byte_size_pow_2 = byte_size.ilog2() as u8;
-	let signed = &caps[2] == "i";
+	let signed = &caps[4] == "i";
+	let value = caps[3].as_bytes();
+	let relative_label = caps.get(2);
+	let add_to_value = || {
+		if let Some(label) = relative_label
+		{
+			if let Some(addr) = labels.get(label.as_str())
+			{
+				return *addr;
+			}
+		}
+		0
+	};
+
 	let typ = if signed
 	{
 		ValueType::Int(byte_size_pow_2)
@@ -89,17 +105,15 @@ fn parse_input(input: &String) -> Value
 	};
 	let (sign, mut value_bytes) = if signed
 	{
-		let value = BigInt::parse_bytes(&caps[1].as_bytes(), 10).unwrap();
+		let mut value = BigInt::parse_bytes(&value, 10).unwrap();
+		value += add_to_value();
 		(value.sign(), value.to_signed_bytes_le())
 	}
 	else
 	{
-		(
-			Sign::Plus,
-			BigUint::parse_bytes(caps[1].as_bytes(), 10)
-				.unwrap()
-				.to_bytes_le(),
-		)
+		let mut value = BigUint::parse_bytes(value, 10).unwrap();
+		value += add_to_value();
+		(Sign::Plus, value.to_bytes_le())
 	};
 	// Ensure the number of bytes fits the type
 	value_bytes.resize(
@@ -149,13 +163,13 @@ fn main()
 
 	let contents = std::fs::read(args.path).unwrap();
 
-	let mut memory = match args.target
+	let (entry, mut memory) = match args.target
 	{
 		Target::Auto =>
 		{
 			unimplemented!()
 		},
-		Target::Raw => BlockedMemory::new(contents.into_iter(), 0),
+		Target::Raw => (0, BlockedMemory::new(contents.into_iter(), 0)),
 		Target::Assembly =>
 		{
 			// File is in textual assembly, assemble it
@@ -164,29 +178,23 @@ fn main()
 			))
 			.unwrap();
 
-			BlockedMemory::new(program.into_iter(), 0)
+			(0, BlockedMemory::new(program.into_iter(), 0))
 		},
 		Target::ScryUnknownNoneElf32 =>
 		{
 			if let object::File::Elf32(elf) = object::File::parse(&*contents).unwrap()
 			{
 				let mut mem = BlockedMemory::empty();
-				let mut found_ex = false;
 				for segment in elf.segments()
 				{
 					if segment.elf_program_header().p_type.get(elf.endianness()) == PT_LOAD
-						&& segment.permissions().executable()
 					{
-						assert!(!found_ex);
-						found_ex = true;
-
-						let addr = 0; // Always start executing at 0
-						let size = segment.size() as usize;
-
-						mem.add_block_zeroed(addr, size);
-
 						if let Ok(data) = segment.data()
 						{
+							let addr = segment.address() as usize;
+							let size = segment.size() as usize;
+
+							mem.add_block_zeroed(addr, size);
 							assert!(size <= data.len());
 							data.iter()
 								.enumerate()
@@ -194,7 +202,7 @@ fn main()
 						}
 					}
 				}
-				mem
+				(elf.entry() as usize, mem)
 			}
 			else
 			{
@@ -207,7 +215,14 @@ fn main()
 	let mut op_queue = HashMap::new();
 	if !args.input.is_empty()
 	{
-		let mut ops: Vec<_> = args.input.iter().map(|s| parse_input(s)).collect();
+		let mut ops: Vec<_> = args
+			.input
+			.iter()
+			.map(|s| {
+				let labels = [("entry", entry)].into_iter().collect();
+				parse_input(s, labels)
+			})
+			.collect();
 		op_queue.insert(0, OperandList::new(ops.remove(0), ops));
 	}
 
@@ -222,7 +237,7 @@ fn main()
 	};
 	let original_state = ExecState {
 		addr_space: 2, // 32-bit address space (for now)
-		address: 0,
+		address: entry,
 		frame: CallFrameState {
 			ret_addr: 0,
 			branches: HashMap::new(),
