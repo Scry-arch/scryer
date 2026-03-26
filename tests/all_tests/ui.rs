@@ -13,7 +13,7 @@ fn input_entry_offset()
 	let assembly = Raw::assemble(once(program)).unwrap();
 
 	let test = |entry_addr, offset| {
-		let elf = create_test_elf(assembly.as_slice(), entry_addr);
+		let elf = create_test_elf(assembly.as_slice(), entry_addr, false);
 		let mut elf_bytes = Vec::new();
 		elf.write(&mut elf_bytes).unwrap();
 		std::fs::create_dir_all(TEMPORARY_DIR).unwrap();

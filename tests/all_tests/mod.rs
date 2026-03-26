@@ -14,9 +14,9 @@ mod ui;
 /// Creates an ELF file for testing containing the given code (.text section).
 ///
 /// The ELF maps the .text section to the given address.
-fn create_test_elf(code: &[u8], entry_addr: usize) -> Builder<'_>
+fn create_test_elf(code: &[u8], entry_addr: usize, is_64_bit: bool) -> Builder<'_>
 {
-	let mut elf = Builder::new(Endianness::Little, false);
+	let mut elf = Builder::new(Endianness::Little, is_64_bit);
 	elf.header.os_abi = ELFOSABI_NONE;
 	elf.header.e_type = ET_EXEC;
 	elf.header.e_machine = EM_SCRY;

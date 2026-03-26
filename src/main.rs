@@ -4,7 +4,11 @@ mod simulator;
 
 use clap::Parser;
 use num_bigint::{BigInt, BigUint, Sign};
-use object::{elf::PT_LOAD, Object, ObjectSegment};
+use object::{
+	elf::PT_LOAD,
+	read::elf::{ElfFile, FileHeader, ProgramHeader},
+	Object, ObjectSegment,
+};
 use regex::Regex;
 use scry_asm::Assemble;
 use scry_sim::{
@@ -29,8 +33,10 @@ pub enum Target
 	Raw,
 	/// File containing textual assembly
 	Assembly,
-	/// ELF file
+	/// 32-bit ELF file
 	ScryUnknownNoneElf32,
+	/// 64-bit ELF file
+	ScryUnknownNoneElf64,
 }
 
 /// Command-line arguments
@@ -155,6 +161,30 @@ fn print_metrics(tracker: &TrackReport)
 	}
 }
 
+/// Extracts the contents of an ELF file (both 32- and 64-bit), returning the
+/// entry addres, the memory, and the address width in powers of 2.
+fn extract_elf<'a, E: FileHeader>(elf: ElfFile<'a, E, &'a [u8]>) -> (usize, BlockedMemory, u8)
+{
+	let mut mem = BlockedMemory::empty();
+	for segment in elf.segments()
+	{
+		if segment.elf_program_header().p_type(elf.endian()) == PT_LOAD
+		{
+			if let Ok(data) = segment.data()
+			{
+				let addr = segment.address() as usize;
+				let size = segment.size() as usize;
+
+				mem.add_block_zeroed(addr, size);
+				data.iter()
+					.enumerate()
+					.for_each(|(i, b)| mem.write_raw(addr + i, *b).unwrap())
+			}
+		}
+	}
+	(elf.entry() as usize, mem, if elf.is_64() { 3 } else { 2 })
+}
+
 fn main()
 {
 	let start_time = Instant::now();
@@ -163,13 +193,13 @@ fn main()
 
 	let contents = std::fs::read(args.path).unwrap();
 
-	let (entry, mut memory) = match args.target
+	let (entry, mut memory, address_space) = match args.target
 	{
 		Target::Auto =>
 		{
 			unimplemented!()
 		},
-		Target::Raw => (0, BlockedMemory::new(contents.into_iter(), 0)),
+		Target::Raw => (0, BlockedMemory::new(contents.into_iter(), 0), 2),
 		Target::Assembly =>
 		{
 			// File is in textual assembly, assemble it
@@ -178,31 +208,24 @@ fn main()
 			))
 			.unwrap();
 
-			(0, BlockedMemory::new(program.into_iter(), 0))
+			(0, BlockedMemory::new(program.into_iter(), 0), 2)
 		},
 		Target::ScryUnknownNoneElf32 =>
 		{
 			if let object::File::Elf32(elf) = object::File::parse(&*contents).unwrap()
 			{
-				let mut mem = BlockedMemory::empty();
-				for segment in elf.segments()
-				{
-					if segment.elf_program_header().p_type.get(elf.endianness()) == PT_LOAD
-					{
-						if let Ok(data) = segment.data()
-						{
-							let addr = segment.address() as usize;
-							let size = segment.size() as usize;
-
-							mem.add_block_zeroed(addr, size);
-							assert!(size <= data.len());
-							data.iter()
-								.enumerate()
-								.for_each(|(i, b)| mem.write_raw(addr + i, *b).unwrap())
-						}
-					}
-				}
-				(elf.entry() as usize, mem)
+				extract_elf(elf)
+			}
+			else
+			{
+				unimplemented!()
+			}
+		},
+		Target::ScryUnknownNoneElf64 =>
+		{
+			if let object::File::Elf64(elf) = object::File::parse(&*contents).unwrap()
+			{
+				extract_elf(elf)
 			}
 			else
 			{
@@ -210,7 +233,6 @@ fn main()
 			}
 		},
 	};
-
 	// Ready inputs
 	let mut op_queue = HashMap::new();
 	if !args.input.is_empty()
@@ -236,7 +258,7 @@ fn main()
 		base_size: 0,
 	};
 	let original_state = ExecState {
-		addr_space: 2, // 32-bit address space (for now)
+		addr_space: address_space,
 		address: entry,
 		frame: CallFrameState {
 			ret_addr: 0,

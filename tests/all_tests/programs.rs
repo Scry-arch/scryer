@@ -13,8 +13,10 @@ enum Target
 	Raw,
 	/// File containing textual assembly
 	Assembly,
-	/// ELF file
+	/// ELF32 file
 	ScryUnknownNoneElf32,
+	/// ELF64 file
+	ScryUnknownNoneElf64,
 }
 
 /// Tests that the given assembly program can be simulated with the given inputs
@@ -54,7 +56,14 @@ fn test_program<const INS: usize>(
 		},
 		Target::ScryUnknownNoneElf32 =>
 		{
-			let elf = create_test_elf(assembled.as_slice(), 0);
+			let elf = create_test_elf(assembled.as_slice(), 0, false);
+			let mut out = object::write::StreamingBuffer::new(Vec::new());
+			elf.write(&mut out)?;
+			out.into_inner()
+		},
+		Target::ScryUnknownNoneElf64 =>
+		{
+			let elf = create_test_elf(assembled.as_slice(), 0, true);
 			let mut out = object::write::StreamingBuffer::new(Vec::new());
 			elf.write(&mut out)?;
 			out.into_inner()
@@ -79,6 +88,7 @@ fn test_program<const INS: usize>(
 		Target::Raw => "--target=raw",
 		Target::Assembly => "--target=assembly",
 		Target::ScryUnknownNoneElf32 => "--target=scry-unknown-none-elf32",
+		Target::ScryUnknownNoneElf64 => "--target=scry-unknown-none-elf64",
 	});
 	for input in inputs
 	{
@@ -101,10 +111,6 @@ fn test_program<const INS: usize>(
 			predicate::str::is_match(
 				"Returned Operands(.)*?\\n".to_owned()
 					+ expected_result
-						// Escape any parentheses in the expected result
-						.replace("(", "\\(")
-						.replace(")", "\\)")
-						.as_str()
 					// Ensure only a superfluous comma and whitespace may follow the expected
 					 + "(, )?\\n",
 			)
@@ -203,9 +209,15 @@ macro_rules! test_program {
 			}
 			#[test]
 			#[allow(non_snake_case)]
-			fn [< $name _elf>]() -> Result<(), Box<dyn std::error::Error>>{
+			fn [< $name _elf32>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
 					Target::ScryUnknownNoneElf32, false, [$(($metric, $value),)*].into())
+			}
+			#[test]
+			#[allow(non_snake_case)]
+			fn [< $name _elf64>]() -> Result<(), Box<dyn std::error::Error>>{
+				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
+					Target::ScryUnknownNoneElf64, false, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
@@ -221,9 +233,15 @@ macro_rules! test_program {
 			}
 			#[test]
 			#[allow(non_snake_case)]
-			fn [< $name _elf_machine>]() -> Result<(), Box<dyn std::error::Error>>{
+			fn [< $name _elf32_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
 					Target::ScryUnknownNoneElf32, true, [$(($metric, $value),)*].into())
+			}
+			#[test]
+			#[allow(non_snake_case)]
+			fn [< $name _elf64_machine>]() -> Result<(), Box<dyn std::error::Error>>{
+				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
+					Target::ScryUnknownNoneElf64, true, [$(($metric, $value),)*].into())
 			}
 		}
 		test_program!{
@@ -1027,10 +1045,10 @@ test_program! {
 // Tests the 'saddr' instruction returns the correct address
 #[duplicate_item(
 	name				size	index	result1		result2;
-	[stack_addr_0_0]	["u8"]	["[0]"]	[0]			["65536u32"];
-	[stack_addr_0_1]	["i8"]	["[1]"]	[1]			["65537u32"];
-	[stack_addr_1_0]	["u16"]	["[0]"]	[0]			["65536u32"];
-	[stack_addr_1_1]	["i16"]	["[1]"]	[2]			["65538u32"];
+	[stack_addr_0_0]	["u8"]	["[0]"]	[0]			["65536u(32|64)"];
+	[stack_addr_0_1]	["i8"]	["[1]"]	[1]			["65537u(32|64)"];
+	[stack_addr_1_0]	["u16"]	["[0]"]	[0]			["65536u(32|64)"];
+	[stack_addr_1_1]	["i16"]	["[1]"]	[2]			["65538u(32|64)"];
 )]
 test_program! {
 	name [
@@ -1046,8 +1064,8 @@ test_program! {
 // call
 #[duplicate_item(
 	name							res		size	index	result1		result2;
-	[stack_addr_from_call_8_0_0]	["8"]	["u8"]	["[0]"]	[8]			["65544u32"];
-	[stack_addr_from_call_16_1_10]	["16"]	["i16"]	["[10]"][36]		["65572u32"];
+	[stack_addr_from_call_8_0_0]	["8"]	["u8"]	["[0]"]	[8]			["65544u(32|64)"];
+	[stack_addr_from_call_16_1_10]	["16"]	["i16"]	["[10]"][36]		["65572u(32|64)"];
 )]
 test_program! {
 	name [
