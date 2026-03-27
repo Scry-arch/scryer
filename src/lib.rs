@@ -1,0 +1,359 @@
+#![cfg_attr(feature = "fail-on-warnings", deny(warnings))]
+
+use clap::Parser;
+use num_bigint::{BigInt, BigUint, Sign};
+use object::{
+	elf::PT_LOAD,
+	read::elf::{ElfFile, FileHeader, ProgramHeader},
+	Object, ObjectSegment,
+};
+use regex::Regex;
+use scry_asm::Assemble;
+use scry_sim::{
+	Block, BlockedMemory, CallFrameState, ExecError, ExecState, Executor, Memory, Metric,
+	MetricReporter, OperandList, Scalar, StackFrame, TrackReport, Value, ValueType,
+};
+use std::{collections::HashMap, io::Write, time::Instant};
+
+#[derive(clap::ValueEnum, Clone, Eq, PartialEq)]
+enum TimeoutType
+{
+	Instructions,
+	Seconds,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum Target
+{
+	/// Tries to detect the target automatically
+	Auto,
+	/// Raw binary file containing only encoded instructions
+	Raw,
+	/// File containing textual assembly
+	Assembly,
+	/// 32-bit ELF file
+	ScryUnknownNoneElf32,
+	/// 64-bit ELF file
+	ScryUnknownNoneElf64,
+}
+
+/// Command-line arguments
+#[derive(Parser)]
+pub struct Cli
+{
+	/// The path to the file to execute
+	path: std::path::PathBuf,
+
+	/// For when the simulator needs to emulate the program exactly.
+	/// In this mode, the simulator's outputs (exit code, stdout, stderr) come
+	/// from the simulated program.
+	#[clap(short, long)]
+	machine_mode: bool,
+
+	/// The target triple of the input file
+	#[clap(long)]
+	#[arg(value_enum, default_value_t = Target::Auto)]
+	target: Target,
+
+	/// Input operand to the first instruction.
+	/// Can be given multiple times for multiple input operands.
+	/// Must give value and its type. E.g. '1u8' is an unsigned byte of value 1.
+	/// Can give relative to a known label. E.g. 'entry+1u8' is an unsigned byte
+	/// of value one higher than the 'entry' label.
+	#[clap(short, long)]
+	input: Vec<String>,
+
+	/// Stop the simulation early.
+	#[clap(long)]
+	#[arg(default_value_t = 0)]
+	timeout: usize,
+
+	/// What counter should be used to timeout.
+	#[clap(long)]
+	#[arg(value_enum, default_value_t = TimeoutType::Seconds)]
+	timeout_type: TimeoutType,
+
+	#[clap(long)]
+	debug: bool,
+}
+
+fn parse_input(input: &String, labels: HashMap<&str, usize>) -> Value
+{
+	let re = Regex::new(r"^((.+)\+)?(-?\d+)(u|i)(\d+)$").unwrap();
+	let caps = re.captures_iter(input.as_str()).next().unwrap();
+
+	let bit_size: u8 = caps[5].parse().unwrap();
+	let byte_size = bit_size / 8;
+	let byte_size_pow_2 = byte_size.ilog2() as u8;
+	let signed = &caps[4] == "i";
+	let value = caps[3].as_bytes();
+	let relative_label = caps.get(2);
+	let add_to_value = || {
+		if let Some(label) = relative_label
+		{
+			if let Some(addr) = labels.get(label.as_str())
+			{
+				return *addr;
+			}
+		}
+		0
+	};
+
+	let typ = if signed
+	{
+		ValueType::Int(byte_size_pow_2)
+	}
+	else
+	{
+		ValueType::Uint(byte_size_pow_2)
+	};
+	let (sign, mut value_bytes) = if signed
+	{
+		let mut value = BigInt::parse_bytes(&value, 10).unwrap();
+		value += add_to_value();
+		(value.sign(), value.to_signed_bytes_le())
+	}
+	else
+	{
+		let mut value = BigUint::parse_bytes(value, 10).unwrap();
+		value += add_to_value();
+		(Sign::Plus, value.to_bytes_le())
+	};
+	// Ensure the number of bytes fits the type
+	value_bytes.resize(
+		byte_size as usize,
+		if sign == Sign::Minus { u8::MAX } else { 0 },
+	);
+	assert_eq!(value_bytes.len(), byte_size as usize);
+
+	Value::singleton_typed(typ, Scalar::Val(value_bytes.into_boxed_slice()))
+}
+
+fn value_to_string(val: &Value) -> String
+{
+	let (mut val, typ, size_pow_2): (String, char, u8) = match val.value_type()
+	{
+		ValueType::Uint(x) =>
+		{
+			let int = BigUint::from_bytes_le(val.iter().next().unwrap().bytes().unwrap());
+			(int.to_string(), 'u', 2u8.pow(x as u32) * 8)
+		},
+		ValueType::Int(x) =>
+		{
+			let int = BigInt::from_signed_bytes_le(val.iter().next().unwrap().bytes().unwrap());
+			(int.to_string(), 'i', 2u8.pow(x as u32) * 8)
+		},
+	};
+	val.push(typ);
+	val.push_str(&*size_pow_2.to_string());
+	val
+}
+
+fn print_metrics(tracker: &TrackReport, mut stdout: impl Write)
+{
+	writeln!(stdout, "\n----------  Simulation Metrics  ----------").unwrap();
+	for metric in Metric::all()
+	{
+		let metric_val = tracker.get_stat(metric);
+		writeln!(stdout, "{:?}: {}", metric, metric_val).unwrap();
+	}
+}
+
+/// Extracts the contents of an ELF file (both 32- and 64-bit), returning the
+/// entry addres, the memory, and the address width in powers of 2.
+fn extract_elf<'a, E: FileHeader>(elf: ElfFile<'a, E, &'a [u8]>) -> (usize, BlockedMemory, u8)
+{
+	let mut mem = BlockedMemory::empty();
+	for segment in elf.segments()
+	{
+		if segment.elf_program_header().p_type(elf.endian()) == PT_LOAD
+		{
+			if let Ok(data) = segment.data()
+			{
+				let addr = segment.address() as usize;
+				let size = segment.size() as usize;
+
+				mem.add_block_zeroed(addr, size);
+				data.iter()
+					.enumerate()
+					.for_each(|(i, b)| mem.write_raw(addr + i, *b).unwrap())
+			}
+		}
+	}
+	(elf.entry() as usize, mem, if elf.is_64() { 3 } else { 2 })
+}
+
+pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
+{
+	let contents = std::fs::read(args.path).unwrap();
+
+	let (entry, mut memory, address_space) = match args.target
+	{
+		Target::Auto =>
+		{
+			unimplemented!()
+		},
+		Target::Raw => (0, BlockedMemory::new(contents.into_iter(), 0), 2),
+		Target::Assembly =>
+		{
+			// File is in textual assembly, assemble it
+			let program = scry_asm::Raw::assemble(std::iter::once(
+				String::from_utf8(contents).unwrap().as_str(),
+			))
+			.unwrap();
+
+			(0, BlockedMemory::new(program.into_iter(), 0), 2)
+		},
+		Target::ScryUnknownNoneElf32 =>
+		{
+			if let object::File::Elf32(elf) = object::File::parse(&*contents).unwrap()
+			{
+				extract_elf(elf)
+			}
+			else
+			{
+				unimplemented!()
+			}
+		},
+		Target::ScryUnknownNoneElf64 =>
+		{
+			if let object::File::Elf64(elf) = object::File::parse(&*contents).unwrap()
+			{
+				extract_elf(elf)
+			}
+			else
+			{
+				unimplemented!()
+			}
+		},
+	};
+	// Ready inputs
+	let mut op_queue = HashMap::new();
+	if !args.input.is_empty()
+	{
+		let mut ops: Vec<_> = args
+			.input
+			.iter()
+			.map(|s| {
+				let labels = [("entry", entry)].into_iter().collect();
+				parse_input(s, labels)
+			})
+			.collect();
+		op_queue.insert(0, OperandList::new(ops.remove(0), ops));
+	}
+
+	let stack_base = 1 << 16;
+	let stack_buffer = 1 << 12;
+	let base_stack = StackFrame {
+		block: Block {
+			address: stack_base,
+			size: 0,
+		},
+		base_size: 0,
+	};
+	let original_state = ExecState {
+		addr_space: address_space,
+		address: entry,
+		frame: CallFrameState {
+			ret_addr: 0,
+			branches: HashMap::new(),
+			op_queue,
+			stack: base_stack.clone(),
+		},
+		frame_stack: vec![CallFrameState {
+			ret_addr: 0,
+			branches: HashMap::new(),
+			op_queue: HashMap::new(),
+			stack: base_stack,
+		}],
+		stack_buffer,
+	};
+	let mut tracker = TrackReport::new();
+	if args.debug
+	{
+		dbg!(&original_state);
+	}
+
+	// Add stack memery block
+	memory.add_block((0..stack_buffer).map(|_| 0), stack_base);
+
+	let mut res =
+		Executor::<BlockedMemory, _>::from_state(&original_state, &mut memory).step(&mut tracker);
+
+	let start_time = Instant::now();
+	while res.is_ok()
+	{
+		let exec = res.unwrap();
+		let state = exec.state();
+		if args.debug
+		{
+			dbg!(&state);
+		}
+
+		if state.frame_stack.len() == 0
+		{
+			// Done
+			if let Some(returned_values) = state.frame.op_queue.get(&0)
+			{
+				if args.machine_mode
+				{
+					// Return the integer value of the first return operand or 123 if unavailable
+					return returned_values
+						.iter()
+						.next()
+						.unwrap()
+						.get_first()
+						.bytes()
+						.map_or(123, |b| b[0] as i32);
+				}
+				else
+				{
+					// Pretty print the returned operands
+					writeln!(stdout, "----------  Returned Operands  ----------").unwrap();
+					for val in returned_values.iter()
+					{
+						let val_str = value_to_string(val);
+						write!(stdout, "{}, ", val_str).unwrap();
+					}
+
+					print_metrics(&tracker, stdout);
+					return 0;
+				}
+			}
+			// Failure
+			res = Err(ExecError::Err("No operands returned by simulation.".into()));
+			continue;
+		}
+
+		if args.timeout > 0
+			&& ((args.timeout_type == TimeoutType::Instructions
+				&& tracker.get_stat(Metric::InstructionReads) == args.timeout)
+				| (args.timeout_type == TimeoutType::Seconds
+					&& start_time.elapsed().as_secs() > args.timeout as u64))
+		{
+			if !args.machine_mode
+			{
+				writeln!(stdout, "----------  Timeout  ----------").unwrap();
+				print_metrics(&tracker, stdout);
+			}
+			return 123;
+		}
+
+		res = exec.step(&mut tracker);
+	}
+	// Implicit failure
+	match res
+	{
+		Err(err) =>
+		{
+			if !args.machine_mode
+			{
+				writeln!(stdout, "----------  Error  ----------").unwrap();
+				writeln!(stdout, "{:?}", err).unwrap();
+				print_metrics(&tracker, stdout);
+			}
+		},
+		Ok(_) => unreachable!(),
+	}
+	123
+}
