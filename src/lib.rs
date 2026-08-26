@@ -267,6 +267,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			stack: base_stack,
 		}],
 		stack_buffer,
+		more_depth: 1, // Total depth = 4
 	};
 	let mut tracker = TrackReport::new();
 	if args.debug

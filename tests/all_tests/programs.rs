@@ -1612,7 +1612,7 @@ test_program! {
 	"fn_bsearch_dup_base:"				"dup =>fn_bsearch_pivot_add, =>|=>fn_bsearch_cap_base"
 
 										// Calculate the pivot (element to compare)
-	"fn_bsearch_pivot_half_elements:"	"shr Low =>fn_bsearch_pivot_scale"
+	"fn_bsearch_pivot_half_elements:"	"div Low =>fn_bsearch_pivot_scale"
 	"fn_bsearch_dup_size:"				"dup =>|=>fn_bsearch_calc_right_base, =>|=>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_size, =>"
 	"fn_bsearch_pivot_scale:"			"mul Low =>fn_bsearch_pivot_add"
 	"fn_bsearch_pivot_add:"				"add Low =>fn_bsearch_pivot_dup"
@@ -1633,7 +1633,7 @@ test_program! {
 
 										// decrement nr, then halve
 	"fn_bsearch_dec_nr:"				"sub =>fn_bsearch_halve_nr"
-	"fn_bsearch_halve_nr:"				"shr Low =>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_nr2"
+	"fn_bsearch_halve_nr:"				"div Low =>fn_bsearch_loop_end=>fn_bsearch_loop_start=>fn_bsearch_dup_nr2"
 
 	"fn_bsearch_check_jmp_loc:"
 
