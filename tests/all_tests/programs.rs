@@ -14,9 +14,9 @@ enum Target
 	/// File containing textual assembly
 	Assembly,
 	/// ELF32 file
-	ScryUnknownNoneElf32,
+	Scry32UnknownNoneElf,
 	/// ELF64 file
-	ScryUnknownNoneElf64,
+	Scry64UnknownNoneElf,
 }
 
 /// Tests that the given assembly program can be simulated with the given inputs
@@ -54,14 +54,14 @@ fn test_program<const INS: usize>(
 				.cloned()
 				.collect()
 		},
-		Target::ScryUnknownNoneElf32 =>
+		Target::Scry32UnknownNoneElf =>
 		{
 			let elf = create_test_elf(assembled.as_slice(), 0, false);
 			let mut out = object::write::StreamingBuffer::new(Vec::new());
 			elf.write(&mut out)?;
 			out.into_inner()
 		},
-		Target::ScryUnknownNoneElf64 =>
+		Target::Scry64UnknownNoneElf =>
 		{
 			let elf = create_test_elf(assembled.as_slice(), 0, true);
 			let mut out = object::write::StreamingBuffer::new(Vec::new());
@@ -87,8 +87,8 @@ fn test_program<const INS: usize>(
 	{
 		Target::Raw => "--target=raw",
 		Target::Assembly => "--target=assembly",
-		Target::ScryUnknownNoneElf32 => "--target=scry-unknown-none-elf32",
-		Target::ScryUnknownNoneElf64 => "--target=scry-unknown-none-elf64",
+		Target::Scry32UnknownNoneElf => "--target=scry32-unknown-none-elf",
+		Target::Scry64UnknownNoneElf => "--target=scry64-unknown-none-elf",
 	});
 	for input in inputs
 	{
@@ -211,13 +211,13 @@ macro_rules! test_program {
 			#[allow(non_snake_case)]
 			fn [< $name _elf32>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::ScryUnknownNoneElf32, false, [$(($metric, $value),)*].into())
+					Target::Scry32UnknownNoneElf, false, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _elf64>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::ScryUnknownNoneElf64, false, [$(($metric, $value),)*].into())
+					Target::Scry64UnknownNoneElf, false, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
@@ -235,13 +235,13 @@ macro_rules! test_program {
 			#[allow(non_snake_case)]
 			fn [< $name _elf32_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::ScryUnknownNoneElf32, true, [$(($metric, $value),)*].into())
+					Target::Scry32UnknownNoneElf, true, [$(($metric, $value),)*].into())
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _elf64_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::ScryUnknownNoneElf64, true, [$(($metric, $value),)*].into())
+					Target::Scry64UnknownNoneElf, true, [$(($metric, $value),)*].into())
 			}
 		}
 		test_program!{

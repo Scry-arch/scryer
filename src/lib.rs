@@ -32,9 +32,9 @@ enum Target
 	/// File containing textual assembly
 	Assembly,
 	/// 32-bit ELF file
-	ScryUnknownNoneElf32,
+	Scry32UnknownNoneElf,
 	/// 64-bit ELF file
-	ScryUnknownNoneElf64,
+	Scry64UnknownNoneElf,
 }
 
 /// Command-line arguments
@@ -204,7 +204,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 
 			(0, BlockedMemory::new(program.into_iter(), 0), 2)
 		},
-		Target::ScryUnknownNoneElf32 =>
+		Target::Scry32UnknownNoneElf =>
 		{
 			if let object::File::Elf32(elf) = object::File::parse(&*contents).unwrap()
 			{
@@ -215,7 +215,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 				unimplemented!()
 			}
 		},
-		Target::ScryUnknownNoneElf64 =>
+		Target::Scry64UnknownNoneElf =>
 		{
 			if let object::File::Elf64(elf) = object::File::parse(&*contents).unwrap()
 			{
