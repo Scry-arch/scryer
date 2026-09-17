@@ -24,7 +24,7 @@ fn input_entry_offset()
 		let mut cmd = cargo_bin_cmd!("scryer");
 		cmd.arg(file.path());
 		cmd.arg("--machine-mode");
-		cmd.arg("--target=scry-unknown-none-elf32");
+		cmd.arg("--target=scry32-unknown-none-elf");
 		cmd.arg(format!("-i=entry+{}i8", offset));
 
 		// Check Results
