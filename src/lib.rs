@@ -242,7 +242,10 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 		op_queue.insert(0, OperandList::new(ops.remove(0), ops));
 	}
 
-	let stack_base = 1 << 16;
+	// The stack block sits above the program image, which starts at 0 and may
+	// grow to 1 MiB: the Scry-5 board stops it at 64 KiB, but larger programs
+	// can be simulated.
+	let stack_base = 1 << 20;
 	let stack_buffer = 1 << 12;
 	let base_stack = StackFrame {
 		block: Block {

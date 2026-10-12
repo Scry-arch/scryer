@@ -1045,10 +1045,10 @@ test_program! {
 // Tests the 'saddr' instruction returns the correct address
 #[duplicate_item(
 	name				size	index	result1		result2;
-	[stack_addr_0_0]	["u8"]	["[0]"]	[0]			["65536u(32|64)"];
-	[stack_addr_0_1]	["i8"]	["[1]"]	[1]			["65537u(32|64)"];
-	[stack_addr_1_0]	["u16"]	["[0]"]	[0]			["65536u(32|64)"];
-	[stack_addr_1_1]	["i16"]	["[1]"]	[2]			["65538u(32|64)"];
+	[stack_addr_0_0]	["u8"]	["[0]"]	[0]			["1048576u(32|64)"];
+	[stack_addr_0_1]	["i8"]	["[1]"]	[1]			["1048577u(32|64)"];
+	[stack_addr_1_0]	["u16"]	["[0]"]	[0]			["1048576u(32|64)"];
+	[stack_addr_1_1]	["i16"]	["[1]"]	[2]			["1048578u(32|64)"];
 )]
 test_program! {
 	name [
@@ -1064,8 +1064,8 @@ test_program! {
 // call
 #[duplicate_item(
 	name							res		size	index	result1		result2;
-	[stack_addr_from_call_8_0_0]	["8"]	["u8"]	["[0]"]	[8]			["65544u(32|64)"];
-	[stack_addr_from_call_16_1_10]	["16"]	["i16"]	["[10]"][36]		["65572u(32|64)"];
+	[stack_addr_from_call_8_0_0]	["8"]	["u8"]	["[0]"]	[8]			["1048584u(32|64)"];
+	[stack_addr_from_call_16_1_10]	["16"]	["i16"]	["[10]"][36]		["1048612u(32|64)"];
 )]
 test_program! {
 	name [
