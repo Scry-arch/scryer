@@ -1,8 +1,8 @@
 use object::{
 	build::elf::{Builder, SectionData},
 	elf::{
-		ELFOSABI_NONE, EM_SCRY, ET_EXEC, PF_R, PF_X, PT_PHDR, SHF_ALLOC, SHF_EXECINSTR,
-		SHT_PROGBITS,
+		ProgramFlags, ELFOSABI_NONE, EM_SCRY, ET_EXEC, PF_R, PF_X, PT_PHDR, SHF_ALLOC,
+		SHF_EXECINSTR, SHT_PROGBITS,
 	},
 	Endianness,
 };
@@ -24,9 +24,9 @@ fn create_test_elf(code: &[u8], entry_addr: usize, is_64_bit: bool) -> Builder<'
 
 	// Create segments
 	let phdr_seg = elf.segments.add().id();
-	let load_phdr_seg = elf.segments.add_load_segment(0, 4).id();
-	let program_seg = elf.segments.add_load_segment(0, 4).id();
-	let phdr_size = elf.program_headers_size() as u64;
+	let load_phdr_seg = elf.segments.add_load_segment(ProgramFlags(0), 4).id();
+	let program_seg = elf.segments.add_load_segment(ProgramFlags(0), 4).id();
+	let phdr_size = elf.program_headers_size();
 
 	// Config PHDR segment
 	elf.segments.get_mut(phdr_seg).p_type = PT_PHDR;
@@ -48,7 +48,7 @@ fn create_test_elf(code: &[u8], entry_addr: usize, is_64_bit: bool) -> Builder<'
 	text_section.sh_type = SHT_PROGBITS;
 	text_section.sh_addralign = 2;
 	text_section.sh_size = code.len() as u64;
-	text_section.sh_flags = (SHF_ALLOC | SHF_EXECINSTR) as u64;
+	text_section.sh_flags = SHF_ALLOC | SHF_EXECINSTR;
 	text_section.data = SectionData::Data(code.into());
 
 	elf.segments

@@ -1,7 +1,6 @@
 use crate::TEMPORARY_DIR;
 use assert_cmd::cargo::cargo_bin_cmd;
-use predicates::prelude::predicate;
-use scry_sim::Metric;
+use predicates::prelude::{predicate, PredicateStrExt};
 use std::{
 	io::Write,
 	time::{Duration, Instant},
@@ -28,21 +27,21 @@ fn timeout_instructions(instr_timeout: u16)
 	cmd.arg(file.path())
 		.arg(format!("--timeout={}", instr_timeout.to_string()))
 		.arg("--timeout-type=instructions")
-		.arg("--target=assembly");
-
-	// Test that a timeout is messaged
-	let timeout_msg = r"Timeout(.)*?\n(.|\n)*?".to_owned();
-	// Test that the metrics show the right number of instructions were executed
-	let instr_count = format!(
-		r"{:?}(\s)*?:(\s)*?{}\n(.|\n)*?",
-		Metric::InstructionReads,
-		instr_timeout
-	);
+		.arg("--target=assembly")
+		.arg("--print-events");
 
 	cmd.timeout(Duration::new(60, 0))
 		.assert()
 		.failure()
-		.stdout(predicate::str::is_match(timeout_msg + instr_count.as_str()).unwrap());
+		// Test that a timeout is messaged
+		.stdout(predicate::str::is_match(r"Timeout(.)*?\n(.|\n)*?".to_owned()).unwrap())
+		// Test number of instructions match
+		.stdout(
+			predicate::function(|out: &str| {
+				out.matches("STEP_END").count() == instr_timeout as usize
+			})
+			.from_utf8(),
+		);
 }
 
 /// Tests can ask for a timeout after some number of seconds
@@ -67,7 +66,7 @@ fn timeout_second(second_timeout: u16, machine_mode: bool)
 	let assert = cmd.timeout(Duration::new(60, 0)).assert();
 	let elapsed = before.elapsed().as_secs();
 
-	// test timeout with a uncertainty of 2 second
+	// test timeout with an uncertainty of 2 second
 	assert!(elapsed < (second_timeout + 2) as u64);
 	assert!(elapsed >= second_timeout as u64);
 

@@ -1,9 +1,8 @@
 use crate::{all_tests::create_test_elf, TEMPORARY_DIR};
 use assert_cmd::cargo::cargo_bin_cmd;
-use duplicate::{duplicate_item, substitute_item};
+use duplicate::duplicate_item;
 use predicates::prelude::predicate;
 use scry_asm::Assemble;
-use scry_sim::{Metric, Metric::*, MetricReporter, TrackReport};
 use std::{io::Write, iter::once, time::Duration};
 
 /// Program file target types to test
@@ -39,7 +38,6 @@ fn test_program<const INS: usize>(
 	expected_result: &str,
 	test_target: Target,
 	machine_mode: bool,
-	expected_metrics: TrackReport,
 ) -> Result<(), Box<dyn std::error::Error>>
 {
 	let assembled = scry_asm::Raw::assemble(program.iter().cloned())?;
@@ -98,7 +96,7 @@ fn test_program<const INS: usize>(
 	// Check Results
 	let assert = cmd.timeout(Duration::new(5, 0)).assert();
 
-	let assert = if machine_mode
+	if machine_mode
 	{
 		assert
 			.code(predicate::eq(expected_mahine_result as i32))
@@ -107,35 +105,13 @@ fn test_program<const INS: usize>(
 	}
 	else
 	{
-		assert.success().stdout(
-			predicate::str::is_match(
-				"Returned Operands(.)*?\\n".to_owned()
+		assert.success().stdout(predicate::str::is_match(
+			"Returned Operands(.)*?\\n".to_owned()
 					+ expected_result
 					// Ensure only a superfluous comma and whitespace may follow the expected
-					 + "(, )?\\n",
-			)
-			.unwrap(),
-		)
+					 + "(, )?",
+		)?)
 	};
-
-	// Check Metrics
-	if !machine_mode
-	{
-		let mut regex = r"Simulation Metrics(.)*?\n(.|\n)*?".to_owned();
-
-		for metric in Metric::all()
-		{
-			let metric_val = expected_metrics.get_stat(metric);
-			if metric_val != 0
-			{
-				regex.push_str(
-					format!(r"{:?}(\s)*?:(\s)*?{}\n(.|\n)*?", metric, metric_val).as_str(),
-				);
-			}
-		}
-
-		assert.stdout(predicate::str::is_match(regex).unwrap());
-	}
 
 	// Success
 	Ok(())
@@ -156,8 +132,7 @@ macro_rules! test_program {
 		$name:ident
 		[
 			$(
-				[$($inputs:literal),+] -> [$expected_machine_out:literal, $expected_out:literal] :
-				[ $($metric:ident : $value:expr)* ]
+				[$($inputs:literal),+] -> [$expected_machine_out:literal, $expected_out:literal]
 			)+
 		]
 		$($program:literal)*
@@ -170,9 +145,8 @@ macro_rules! test_program {
 				@cases [
 					$(
 						[< $name $(_ $inputs)+ >]
-									[
+						[
 							[$($inputs),+] -> [$expected_machine_out, $expected_out]
-							: [$($metric : $value)*]
 						]
 					)+
 				]
@@ -187,8 +161,7 @@ macro_rules! test_program {
 		@cases [
 			$name:ident
 			[
-				[$($inputs:literal),+] -> [$expected_machine_out:literal, $expected_out:literal] :
-				[ $($metric:ident : $value:expr)* ]
+				[$($inputs:literal),+] -> [$expected_machine_out:literal, $expected_out:literal]
 			]
 			$($rest:tt)*
 		]
@@ -199,49 +172,49 @@ macro_rules! test_program {
 			#[allow(non_snake_case)]
 			fn [< $name _assembly>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::Assembly, false, [$(($metric, $value),)*].into())
+					Target::Assembly, false)
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _binary>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::Raw, false, [$(($metric, $value),)*].into())
+					Target::Raw, false)
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _elf32>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::Scry32UnknownNoneElf, false, [$(($metric, $value),)*].into())
+					Target::Scry32UnknownNoneElf, false)
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _elf64>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::Scry64UnknownNoneElf, false, [$(($metric, $value),)*].into())
+					Target::Scry64UnknownNoneElf, false)
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _assembly_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::Assembly, true, [$(($metric, $value),)*].into())
+					Target::Assembly, true)
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _binary_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::Raw, true, [$(($metric, $value),)*].into())
+					Target::Raw, true)
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _elf32_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::Scry32UnknownNoneElf, true, [$(($metric, $value),)*].into())
+					Target::Scry32UnknownNoneElf, true)
 			}
 			#[test]
 			#[allow(non_snake_case)]
 			fn [< $name _elf64_machine>]() -> Result<(), Box<dyn std::error::Error>>{
 				test_program($program, [$($inputs,)+], $expected_machine_out, $expected_out,
-					Target::Scry64UnknownNoneElf, true, [$(($metric, $value),)*].into())
+					Target::Scry64UnknownNoneElf, true)
 			}
 		}
 		test_program!{
@@ -259,49 +232,27 @@ macro_rules! test_program {
 	) => {};
 }
 
-#[substitute_item(
-	shared_metrics(operand_bytes) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 1
-		ConsumedBytes		: operand_bytes
-		QueuedValues		: 1
-		QueuedValueBytes	: operand_bytes
-		InstructionReads	: 2
-	];
-)]
 test_program! {
 	increment [
-		["0u8"] 	-> [1, "1u8"]	: [ shared_metrics([1]) ]
-		["1i16"] 	-> [2, "2i16"]	: [ shared_metrics([2]) ]
-		["2u32"] 	-> [3, "3u32"]	: [ shared_metrics([4]) ]
-		["255u64"] 	-> [0, "256u64"]	: [ shared_metrics([8]) ]
+		["0u8"] 	-> [1, "1u8"]
+		["1i16"] 	-> [2, "2i16"]
+		["2u32"] 	-> [3, "3u32"]
+		["255u64"] 	-> [0, "256u64"]
 	]
 				"add Low =>ret_at"
 				"ret ret_at"
 	"ret_at:"
 }
 
-#[substitute_item(
-	shared_metrics(operand_bytes, minus_consumed) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 3
-		ConsumedBytes		: (operand_bytes*3)-minus_consumed
-		QueuedValues		: 2
-		QueuedValueBytes	: operand_bytes*2
-		InstructionReads	: 3
-	];
-)]
 test_program! {
 	add_increment [
-		["0u64", "0u64"]		-> [1, "1u64"]		: [ shared_metrics([8],[0]) ]
-		["0u32", "123u32"]		-> [124, "124u32"]	: [ shared_metrics([4],[0]) ]
-		["-1i16", "4i16"]		-> [4, "4i16"]		: [ shared_metrics([2],[0]) ]
-		["2i8", "-22i8"]		-> [237, "-19i8"]	: [ shared_metrics([1],[0]) ]
-		["1i16", "-1i8"]		-> [1, "1i16"]		: [ shared_metrics([2],[1]) ]
-		["668i16", "247u32"]	-> [148, "916u32"]	: [ shared_metrics([4],[2]) ]
-		["56797u64", "57u8"]	-> [23, "56855u64"]	: [ shared_metrics([8],[7]) ]
+		["0u64", "0u64"]		-> [1, "1u64"]
+		["0u32", "123u32"]		-> [124, "124u32"]
+		["-1i16", "4i16"]		-> [4, "4i16"]
+		["2i8", "-22i8"]		-> [237, "-19i8"]
+		["1i16", "-1i8"]		-> [1, "1i16"]
+		["668i16", "247u32"]	-> [148, "916u32"]
+		["56797u64", "57u8"]	-> [23, "56855u64"]
 	]
 				"add =>0"
 				"add Low =>ret_at"
@@ -309,30 +260,19 @@ test_program! {
 	"ret_at:"
 }
 
-#[substitute_item(
-	shared_metrics [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 3
-		ConsumedBytes		: 3
-		QueuedValues		: 3
-		QueuedValueBytes	: 3
-		InstructionReads	: 4
-	];
-)]
 #[duplicate_item(
 	test_name typ constant metrics;
 	[add_const_unsigned] [ "u8" ] [ "12" ] [
-		["0u8"]		-> [13, "13u8"]	: [ shared_metrics ]
-		["25u8"]	-> [38, "38u8"]	: [ shared_metrics ]
+		["0u8"]		-> [13, "13u8"]
+		["25u8"]	-> [38, "38u8"]
 	];
 	[add_const_signed] [ "i8" ] [ "54" ] [
-	["-54i8"]	-> [1, "1i8"]	: [ shared_metrics ]
-	["43i8"]	-> [98, "98i8"]	: [ shared_metrics ]
+	["-54i8"]	-> [1, "1i8"]
+	["43i8"]	-> [98, "98i8"]
 	];
 	[add_const_signed_negative] [ "i8" ] [ "-2" ] [
-		["-24i8"]	-> [231, "-25i8"]	: [ shared_metrics ]
-		["6i8"]		-> [5, "5i8"]	: [ shared_metrics ]
+		["-24i8"]	-> [231, "-25i8"]
+		["6i8"]		-> [5, "5i8"]
 	];
 )]
 test_program! {
@@ -344,22 +284,10 @@ test_program! {
 	"ret_at:"
 }
 
-#[substitute_item(
-	shared_metrics(operand_bytes) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 1
-		ConsumedBytes		: operand_bytes
-		QueuedValues		: 2
-		QueuedValueBytes	: 2
-		InstructionReads	: 5
-		ReorderedOperands	: 3
-	];
-)]
 test_program! {
 	pick_between_2 [
-		["0u8"] 	-> [123, "123i8"]	: [ shared_metrics([1]) ]
-		["1i16"] 	-> [234, "234u8"]	: [ shared_metrics([2]) ]
+		["0u8"] 	-> [123, "123i8"]
+		["1i16"] 	-> [234, "234u8"]
 	]
 					"echo =>pick_instr"
 					"const u8, 234"
@@ -368,24 +296,12 @@ test_program! {
 					"ret 0"
 }
 
-#[substitute_item(
-	shared_metrics(operand_bytes) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 4
-		ConsumedBytes		: operand_bytes*4
-		QueuedValues		: 4
-		QueuedValueBytes	: operand_bytes*4
-		ReorderedOperands	: 1
-		InstructionReads	: 4
-	];
-)]
 test_program! {
 	triple_using_duplicate [
-		["0u64"]		-> [0, "0u64"]		: [ shared_metrics([8]) ]
-		["12u32"]	-> [36, "36u32"]	: [ shared_metrics([4]) ]
-		["-5i16"]	-> [241, "-15i16"]	: [ shared_metrics([2]) ]
-		["14i8"]	-> [42, "42i8"]		: [ shared_metrics([1]) ]
+		["0u64"]		-> [0, "0u64"]
+		["12u32"]	-> [36, "36u32"]
+		["-5i16"]	-> [241, "-15i16"]
+		["14i8"]	-> [42, "42i8"]
 	]
 				"dup =>add1, =>add2, =>"
 	"add1:"		"add =>add2"
@@ -394,22 +310,10 @@ test_program! {
 	"ret_at:"
 }
 
-#[substitute_item(
-	shared_metrics(operand_bytes) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 4
-		ConsumedBytes		: operand_bytes*4
-		QueuedValues		: 2
-		QueuedValueBytes	: operand_bytes*2
-		ReorderedOperands	: 3
-		InstructionReads	: 4
-	];
-)]
 test_program! {
 	three_way_add_using_echo [
-		["0u32","1u32","2u32"]		-> [3, "3u32"]		: [ shared_metrics([4]) ]
-		["-5i32","-16i32","21i32"]	-> [0, "0i32"]		: [ shared_metrics([4]) ]
+		["0u32","1u32","2u32"]		-> [3, "3u32"]
+		["-5i32","-16i32","21i32"]	-> [0, "0i32"]
 	]
 				"echo =>add1, =>add2, =>"
 	"add1:"		"add =>add2"
@@ -418,24 +322,12 @@ test_program! {
 	"ret_at:"
 }
 
-#[substitute_item(
-	shared_metrics(operand_bytes) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 1
-		ConsumedBytes		: operand_bytes*1
-		QueuedValues		: 1
-		QueuedValueBytes	: operand_bytes*1
-		ReorderedOperands	: 1
-		InstructionReads	: 45
-	];
-)]
 test_program! {
 	long_echo_with_nops [
-		["0u8"]		-> [255, "255u8"]	: [ shared_metrics([1]) ]
-		["123u32"]	-> [122, "122u32"]	: [ shared_metrics([4]) ]
-		["-124i16"]	-> [131, "-125i16"]	: [ shared_metrics([2]) ]
-		["14i64"]	-> [13, "13i64"]		: [ shared_metrics([8]) ]
+		["0u8"]		-> [255, "255u8"]
+		["123u32"]	-> [122, "122u32"]
+		["-124i16"]	-> [131, "-125i16"]
+		["14i64"]	-> [13, "13i64"]
 	]
 				"echo =>to_add"
 				// 40 nops ensure that only EchoLong can be used
@@ -490,25 +382,11 @@ test_program! {
 	"ret_at:"
 }
 
-#[substitute_item(
-	shared_metrics(operand_bytes) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 3
-		ConsumedBytes		: operand_bytes*3
-		QueuedValues		: 2
-		QueuedValueBytes	: operand_bytes*2
-		ReorderedOperands	: 2
-		InstructionReads	: 5
-		IssuedBranches		: 1
-		TriggeredBranches	: 1
-	];
-)]
 test_program! {
 	unconditional_jump [
-		["0u32","1u32"]	-> [2, "2u32"]			: [ shared_metrics([4]) ]
-		["5i64","16i64"]	-> [22, "22i64"]			: [ shared_metrics([8]) ]
-		["-1i8","123i8"]	-> [123, "123i8"]	: [ shared_metrics([1]) ]
+		["0u32","1u32"]	-> [2, "2u32"]
+		["5i64","16i64"]	-> [22, "22i64"]
+		["-1i8","123i8"]	-> [123, "123i8"]
 	]
 				"echo =>inc1, =>after_inc1=>add1"
 				"ret ret_at"
@@ -523,25 +401,11 @@ test_program! {
 	"ret_at:"
 }
 
-#[substitute_item(
-	shared_metrics(operand_bytes) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 3
-		ConsumedBytes		: operand_bytes*3
-		QueuedValues		: 2
-		QueuedValueBytes	: operand_bytes*2
-		ReorderedOperands	: 2
-		InstructionReads	: 6
-		IssuedBranches		: 2
-		TriggeredBranches	: 2
-	];
-)]
 test_program! {
 	jump_backwards [
-		["0u32","1u32"]	-> [2, "2u32"]			: [ shared_metrics([4]) ]
-		["5i64","16i64"]	-> [22, "22i64"]			: [ shared_metrics([8]) ]
-		["-1i8","123i8"]	-> [123, "123i8"]	: [ shared_metrics([1]) ]
+		["0u32","1u32"]	-> [2, "2u32"]
+		["5i64","16i64"]	-> [22, "22i64"]
+		["-1i8","123i8"]	-> [123, "123i8"]
 	]
 				"echo =>skip_at=>skip_to=>inc1, =>skip_at=>skip_to=>add1"
 				"jmp skip_to, skip_at" // Skip the return
@@ -553,25 +417,12 @@ test_program! {
 	"jmp_at:"
 }
 
-#[substitute_item(
-	shared_metrics(operand_bytes, branches) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 3
-		ConsumedBytes		: operand_bytes*3
-		QueuedValues		: 2
-		QueuedValueBytes	: operand_bytes+1
-		InstructionReads	: 4
-		IssuedBranches		: branches
-		TriggeredBranches	: branches
-	];
-)]
 test_program! {
 	conditional_jmp [
-		["0u32","1u32"]		-> [0, "0u8"]	: [ shared_metrics([4], [0]) ]
-		["5i64","16i64"]		-> [0, "0u8"]	: [ shared_metrics([8], [0]) ]
-		["-1i16","-1i16"]		-> [1, "1u8"]	: [ shared_metrics([2], [1]) ]
-		["4i8","4i8"]		-> [1, "1u8"]	: [ shared_metrics([1], [1]) ]
+		["0u32","1u32"]		-> [0, "0u8"]
+		["5i64","16i64"]		-> [0, "0u8"]
+		["-1i16","-1i16"]		-> [1, "1u8"]
+		["4i8","4i8"]		-> [1, "1u8"]
 	]
 	// Return 1 if they are equal, 0 otherwise
 				"sub Low =>0"
@@ -584,46 +435,22 @@ test_program! {
 				"const u8, 1"
 }
 
-#[substitute_item(
-	shared_metrics(extra_loops) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 5 + (4 * extra_loops)
-		ConsumedBytes		: 5 + (4 * extra_loops)
-		QueuedValues		: 7 + (4 * extra_loops)
-		QueuedValueBytes	: 7 + (4 * extra_loops)
-		InstructionReads	: 14 + (5 * extra_loops)
-		IssuedBranches		: 0 + (1 * extra_loops)
-		TriggeredBranches	: 0 + (1 * extra_loops)
-		ReorderedOperands	: 6 + (2 * extra_loops)
-	];
-)]
 test_program! {
 	fibonacci [
-		["0u8"]		-> [0, "0u8"]	: [
-			IssuedReturns		: 1
-			TriggeredReturns	: 1
-			ConsumedOperands	: 1
-			ConsumedBytes		: 1
-			QueuedValues		: 2
-			QueuedValueBytes	: 2
-			InstructionReads	: 4
-			IssuedBranches		: 1
-			TriggeredBranches	: 1
-		]
-		["1u8"]		-> [1, "1u8"]		: [ shared_metrics([0]) ]
-		["2u8"]		-> [1, "1u8"]		: [ shared_metrics([1]) ]
-		["3u8"]		-> [2, "2u8"]		: [ shared_metrics([2]) ]
-		["4u8"]		-> [3, "3u8"]		: [ shared_metrics([3]) ]
-		["5u8"]		-> [5, "5u8"]		: [ shared_metrics([4]) ]
-		["6u8"]		-> [8, "8u8"]		: [ shared_metrics([5]) ]
-		["7u8"]		-> [13, "13u8"]		: [ shared_metrics([6]) ]
-		["8u8"]		-> [21, "21u8"]		: [ shared_metrics([7]) ]
-		["9u8"]		-> [34, "34u8"]		: [ shared_metrics([8]) ]
-		["10u8"]	-> [55, "55u8"]		: [ shared_metrics([9]) ]
-		["11u8"]	-> [89, "89u8"]		: [ shared_metrics([10]) ]
-		["12u8"]	-> [144, "144u8"]	: [ shared_metrics([11]) ]
-		["13u8"]	-> [233, "233u8"]	: [ shared_metrics([12]) ]
+		["0u8"]		-> [0, "0u8"]
+		["1u8"]		-> [1, "1u8"]
+		["2u8"]		-> [1, "1u8"]
+		["3u8"]		-> [2, "2u8"]
+		["4u8"]		-> [3, "3u8"]
+		["5u8"]		-> [5, "5u8"]
+		["6u8"]		-> [8, "8u8"]
+		["7u8"]		-> [13, "13u8"]
+		["8u8"]		-> [21, "21u8"]
+		["9u8"]		-> [34, "34u8"]
+		["10u8"]	-> [55, "55u8"]
+		["11u8"]	-> [89, "89u8"]
+		["12u8"]	-> [144, "144u8"]
+		["13u8"]	-> [233, "233u8"]
 	]
 	// Takes a u8 (n)(<14), returning a u8 result equals to the nth number in the fibonacci sequence.
 	"entry:"
@@ -654,25 +481,12 @@ test_program! {
 	"early_ret_trig:"
 }
 
-#[substitute_item(
-	shared_metrics [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 1
-		ConsumedBytes		: 1
-		QueuedValues		: 1
-		QueuedValueBytes	: 1
-		DataReads			: 1
-		DataReadBytes		: 1
-		InstructionReads	: 2
-	];
-)]
 test_program! {
 	load_from_array [
-		["4u8"] 	-> [123, "123u8"]	: [ shared_metrics ]
-		["5u8"] 	-> [124, "124u8"]	: [ shared_metrics ]
-		["6u8"] 	-> [125, "125u8"]	: [ shared_metrics ]
-		["7u8"] 	-> [126, "126u8"]	: [ shared_metrics ]
+		["4u8"] 	-> [123, "123u8"]
+		["5u8"] 	-> [124, "124u8"]
+		["6u8"] 	-> [125, "125u8"]
+		["7u8"] 	-> [126, "126u8"]
 	]
 				"ld u8, =>ret_at"
 				"ret ret_at"
@@ -684,25 +498,12 @@ test_program! {
 				".bytes u8, 126"
 }
 
-#[substitute_item(
-	shared_metrics [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 2
-		ConsumedBytes		: 2
-		QueuedValues		: 2
-		QueuedValueBytes	: 2
-		DataReads			: 1
-		DataReadBytes		: 1
-		InstructionReads	: 3
-	];
-)]
 test_program! {
 	consumed_loaded [
-		["6u8"] 	-> [121, "121u8"]	: [ shared_metrics ]
-		["7u8"] 	-> [122, "122u8"]	: [ shared_metrics ]
-		["8u8"] 	-> [123, "123u8"]	: [ shared_metrics ]
-		["9u8"] 	-> [124, "124u8"]	: [ shared_metrics ]
+		["6u8"] 	-> [121, "121u8"]
+		["7u8"] 	-> [122, "122u8"]
+		["8u8"] 	-> [123, "123u8"]
+		["9u8"] 	-> [124, "124u8"]
 	]
 				"ld u8, =>0"
 				"add Low =>1"
@@ -715,28 +516,12 @@ test_program! {
 
 }
 
-#[substitute_item(
-	shared_metrics(addr_size) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		IssuedBranches		: 1
-		TriggeredBranches	: 1
-		ConsumedOperands	: 11
-		ConsumedBytes		: 10 + addr_size
-		QueuedValues		: 11
-		QueuedValueBytes	: 11
-		DataReads			: 1
-		DataReadBytes		: 1
-		ReorderedOperands	: 8
-		InstructionReads	: 17
-	];
-)]
 test_program! {
 	load_before_store [
-		["6u8"] 	-> [255, "255u8"]	: [ shared_metrics([1]) ]
-		["7u16"] 	-> [255, "255u8"]	: [ shared_metrics([2]) ]
-		["8u32"] 	-> [255, "255u8"]	: [ shared_metrics([4]) ]
-		["9u64"] 	-> [255, "255u8"]	: [ shared_metrics([8]) ]
+		["6u8"] 	-> [255, "255u8"]
+		["7u16"] 	-> [255, "255u8"]
+		["8u32"] 	-> [255, "255u8"]
+		["9u64"] 	-> [255, "255u8"]
 	]
 				"ld u8, =>data=>init_data=>ret_at"
 				"ret ret_at"
@@ -766,28 +551,14 @@ test_program! {
 	"ret_at:"
 }
 
-#[substitute_item(
-	shared_metrics [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 5
-		ConsumedBytes		: 5
-		QueuedValues		: 5
-		QueuedValueBytes	: 6
-		DataReads			: 1
-		DataReadBytes		: 2
-		InstructionReads	: 6
-		ReorderedOperands	: 2
-	];
-)]
 #[duplicate_item(
 	[
 		name [load_from_absolute_address]
 		tests [
-			["0u8"] 	-> [45, "45i16"]	: [ shared_metrics ]
-			["1u8"] 	-> [46, "46i16"]	: [ shared_metrics ]
-			["2u8"] 	-> [47, "47i16"]	: [ shared_metrics ]
-			["3u8"] 	-> [48, "48i16"]	: [ shared_metrics ]
+			["0u8"] 	-> [45, "45i16"]
+			["1u8"] 	-> [46, "46i16"]
+			["2u8"] 	-> [47, "47i16"]
+			["3u8"] 	-> [48, "48i16"]
 		]
 		addr_type ["u8"]
 		addr_val ["22"]
@@ -795,10 +566,10 @@ test_program! {
 	[
 		name [load_from_label_address]
 		tests [
-			["0u8"] 	-> [45, "45i16"]	: [ shared_metrics ]
-			["2u8"] 	-> [47, "47i16"]	: [ shared_metrics ]
-			["5u8"] 	-> [50, "50i16"]	: [ shared_metrics ]
-			["7u8"] 	-> [52, "52i16"]	: [ shared_metrics ]
+			["0u8"] 	-> [45, "45i16"]
+			["2u8"] 	-> [47, "47i16"]
+			["5u8"] 	-> [50, "50i16"]
+			["7u8"] 	-> [52, "52i16"]
 		]
 		addr_type ["u8"]
 		addr_val ["data"]
@@ -806,10 +577,10 @@ test_program! {
 	[
 		name [load_from_relative_address]
 		tests [
-			["1i8"] 	-> [46, "46i16"]	: [ shared_metrics ]
-			["3i8"] 	-> [48, "48i16"]	: [ shared_metrics ]
-			["5i8"] 	-> [50, "50i16"]	: [ shared_metrics ]
-			["7i8"] 	-> [52, "52i16"]	: [ shared_metrics ]
+			["1i8"] 	-> [46, "46i16"]
+			["3i8"] 	-> [48, "48i16"]
+			["5i8"] 	-> [50, "50i16"]
+			["7i8"] 	-> [52, "52i16"]
 		]
 		addr_type ["i8"]
 		addr_val ["12"]
@@ -817,10 +588,10 @@ test_program! {
 	[
 		name [load_from_relative_labels]
 		tests [
-			["0i8"] 	-> [45, "45i16"]	: [ shared_metrics ]
-			["2i8"] 	-> [47, "47i16"]	: [ shared_metrics ]
-			["4i8"] 	-> [49, "49i16"]	: [ shared_metrics ]
-			["6i8"] 	-> [51, "51i16"]	: [ shared_metrics ]
+			["0i8"] 	-> [45, "45i16"]
+			["2i8"] 	-> [47, "47i16"]
+			["4i8"] 	-> [49, "49i16"]
+			["6i8"] 	-> [51, "51i16"]
 		]
 		addr_type ["i8"]
 		addr_val ["load=>data"]
@@ -853,28 +624,12 @@ test_program! {
 
 }
 
-#[substitute_item(
-	shared_metrics [
-		IssuedReturns		: 1
-		IssuedBranches		: 1
-		TriggeredReturns	: 1
-		TriggeredBranches	: 1
-		ConsumedOperands	: 2
-		ConsumedBytes		: 2
-		QueuedValues		: 2
-		QueuedValueBytes	: 3
-		DataReads			: 1
-		DataReadBytes		: 2
-		InstructionReads	: 5
-		ReorderedOperands	: 2
-	];
-)]
 test_program! {
 	load_from_relative_indexed [
-		["0u8"] 	-> [45, "45i16"]	: [ shared_metrics ]
-		["2u8"] 	-> [46, "46i16"]	: [ shared_metrics ]
-		["5u8"] 	-> [47, "47i16"]	: [ shared_metrics ]
-		["7u8"] 	-> [48, "48i16"]	: [ shared_metrics ]
+		["0u8"] 	-> [45, "45i16"]
+		["2u8"] 	-> [46, "46i16"]
+		["5u8"] 	-> [47, "47i16"]
+		["7u8"] 	-> [48, "48i16"]
 	]
 				// Jump past data
 				"echo =>jmp_at=>start=>1"
@@ -903,33 +658,12 @@ test_program! {
 	"load:"		"ld i16, =>0"
 }
 
-#[substitute_item(
-	shared_metrics(len) [
-		IssuedReturns		: 1
-		TriggeredReturns	: 1
-		ConsumedOperands	: 3
-		ConsumedBytes		: 8 + (len*2)
-		QueuedValues		: 3
-		QueuedValueBytes	: 16 + len
-		DataReads			: 1
-		DataReadBytes		: 8
-		StackReads			: 1
-		StackReadBytes		: 8
-		StackWrites			: 1
-		StackWriteBytes		: len
-		StackReserveTotal	: 1
-		StackReserveTotalBytes: 64
-		StackFreeTotal		: 1
-		StackFreeTotalBytes	: 64
-		InstructionReads	: 7
-	];
-)]
 test_program! {
 	store_and_load_from_stack [
-		["0u8"] 	-> [2, "2u64"]	: [ shared_metrics([1]) ]
-		["12u16"] 	-> [14, "14u64"]	: [ shared_metrics([2]) ]
-		["23u32"] 	-> [25, "25u64"]	: [ shared_metrics([4]) ]
-		["45u64"] 	-> [47, "47u64"]	: [ shared_metrics([8]) ]
+		["0u8"] 	-> [2, "2u64"]
+		["12u16"] 	-> [14, "14u64"]
+		["23u32"] 	-> [25, "25u64"]
+		["45u64"] 	-> [47, "47u64"]
 	]
 				"add Low =>store"
 				"rsrv 64"
@@ -942,37 +676,11 @@ test_program! {
 	"end:"
 }
 
-#[substitute_item(
-	shared_metrics [
-		IssuedCalls			: 1
-		TriggeredCalls		: 1
-		IssuedReturns		: 2
-		TriggeredReturns	: 2
-		ConsumedOperands	: 5
-		ConsumedBytes		: 17
-		QueuedValues		: 5
-		QueuedValueBytes	: 17
-		DataReadBytes		: 4
-		StackReads			: 1
-		StackReadBytes		: 4
-		StackWrites			: 1
-		StackWriteBytes		: 4
-		StackReserveTotal	: 1
-		StackReserveTotalBytes: 16
-		StackReserveBase	: 1
-		StackReserveBaseBytes: 8
-		StackFreeTotal		: 1
-		StackFreeTotalBytes	: 16
-		StackFreeBase		: 0
-		StackFreeBaseBytes	: 8
-		InstructionReads	: 12
-	];
-)]
 test_program! {
 	pass_on_stack [
-		["123u32"] 	-> [126, "126u32"]	: [ shared_metrics ]
-		["75u32"] 	-> [78, "78u32"]		: [ shared_metrics ]
-		["46u32"] 	-> [49, "49u32"]		: [ shared_metrics ]
+		["123u32"] 	-> [126, "126u32"]
+		["75u32"] 	-> [78, "78u32"]
+		["46u32"] 	-> [49, "49u32"]
 	]
 				"add Low =>store"
 				"rsrv 16"
@@ -992,38 +700,11 @@ test_program! {
 	"func1_end:"
 }
 
-#[substitute_item(
-	shared_metrics [
-		IssuedCalls			: 1
-		TriggeredCalls		: 1
-		IssuedReturns		: 2
-		TriggeredReturns	: 2
-		ConsumedOperands	: 5
-		ConsumedBytes		: 9
-		QueuedValues		: 5
-		QueuedValueBytes	: 9
-		DataReads			: 1
-		DataReadBytes		: 2
-		StackReads			: 1
-		StackReadBytes		: 2
-		StackWrites			: 1
-		StackWriteBytes		: 2
-		StackReserveTotal	: 0
-		StackReserveTotalBytes: 2
-		StackReserveBase	: 1
-		StackReserveBaseBytes: 2
-		StackFreeTotal		: 1
-		StackFreeTotalBytes	: 2
-		StackFreeBase		: 0
-		StackFreeBaseBytes	: 0
-		InstructionReads	: 11
-	];
-)]
 test_program! {
 	return_on_stack [
-		["123u16"] 	-> [126, "126u16"]	: [ shared_metrics ]
-		["75u16"] 	-> [78, "78u16"]		: [ shared_metrics ]
-		["46u16"] 	-> [49, "49u16"]		: [ shared_metrics ]
+		["123u16"] 	-> [126, "126u16"]
+		["75u16"] 	-> [78, "78u16"]
+		["46u16"] 	-> [49, "49u16"]
 	]
 				"add Low =>call_args"
 				"const u8, func1"
@@ -1052,7 +733,7 @@ test_program! {
 )]
 test_program! {
 	name [
-		["1u8"] 	-> [result1, result2]	: [ ]
+		["1u8"] 	-> [result1, result2]
 	]
 				"saddr " size index
 				"echo =>end"
@@ -1069,7 +750,7 @@ test_program! {
 )]
 test_program! {
 	name [
-		["1u8"] 	-> [result1, result2]	: [ ]
+		["1u8"] 	-> [result1, result2]
 	]
 				"nop"
 				"rsrv " res ", Private"
@@ -1091,22 +772,22 @@ test_program! {
 	[immediate_0u8]				[0]			["0u8"]	[
 		"const u8, 0"
 	];
-	[immediate_21576u16]		[72]			["21576u16"]	[
+	[immediate_21576u16]		[72]		["21576u16"]	[
 		"const u16, 84"
 		"grow 72"
 	];
-	[immediate_6309412i32]		[36]			["6309412i32"]	[
+	[immediate_6309412i32]		[36]		["6309412i32"]	[
 		"const i32, 96"
 		"grow 70"
 		"grow 36"
 	];
-	[immediate_2613597195u32]	[11]			["2613597195u32"]	[
+	[immediate_2613597195u32]	[11]		["2613597195u32"]	[
 		"const u32, 155"
 		"grow 200"
 		"grow 84"
 		"grow 11"
 	];
-	[immediate_211732052817i64]	[81]			["211732052817i64"]	[
+	[immediate_211732052817i64]	[81]		["211732052817i64"]	[
 		"const i64, 49"
 		"grow 76"
 		"grow 54"
@@ -1116,36 +797,20 @@ test_program! {
 )]
 test_program! {
 	name [
-		["0u8"] 	-> [result1, result2]	: [ ]
+		["0u8"] 	-> [result1, result2]
 	]
 				"ret end"
 				code
 	"end:"
 }
 
-#[substitute_item(
-	shared_metrics(len) [
-		IssuedBranches		: len-1
-	    IssuedReturns		: 1
-	    TriggeredBranches	: len-1
-	    TriggeredReturns	: 1
-	    ConsumedOperands	: len*7
-	    ConsumedBytes		: len*7
-	    QueuedValues		: 1+(len*8)
-	    QueuedValueBytes	: 1+(len*8)
-	    ReorderedOperands	: 3+(len*7)
-	    InstructionReads	: 4+(len*10)
-	    DataReads			: len
-	    DataReadBytes		: len
-	];
-)]
 test_program! {
 	find_max [
-		["28u8", "1u8"] -> [0, "0u8"]		: [ shared_metrics([1]) ]
-		["28u8", "2u8"] -> [1, "1u8"]		: [ shared_metrics([2]) ]
-		["30u8", "4u8"] -> [4, "4u8"]		: [ shared_metrics([4]) ]
-		["35u8", "3u8"]	-> [99, "99u8"]		: [ shared_metrics([3]) ]
-		["34u8", "7u8"]	-> [207, "207u8"]	: [ shared_metrics([7]) ]
+		["28u8", "1u8"] -> [0, "0u8"]
+		["28u8", "2u8"] -> [1, "1u8"]
+		["30u8", "4u8"] -> [4, "4u8"]
+		["35u8", "3u8"]	-> [99, "99u8"]
+		["34u8", "7u8"]	-> [207, "207u8"]
 	]
 				// Takes as input (1) the address of an u8-array, (2) its length
 				// returns the highest value in the array. (Array needn't be sorted)
@@ -1187,11 +852,11 @@ test_program! {
 
 test_program! {
 	memcpy [
-		["255u8", "255u8", "0u8"]	->	[0, "0i8, 0i8, 0i8, 0i8"] : []
-		["75u8", "76u8", "1u8"]		->	[7, "7i8, 0i8, 0i8, 0i8"] : []
-		["74u8", "77u8", "2u8"]		->	[0, "0i8, 5i8, 7i8, 0i8"] : []
-		["73u8", "77u8", "3u8"]		->	[0, "0i8, 3i8, 5i8, 7i8"] : []
-		["72u8", "76u8", "4u8"]		->	[2, "2i8, 3i8, 5i8, 7i8"] : []
+		["255u8", "255u8", "0u8"]	->	[0, "0i8, 0i8, 0i8, 0i8"]
+		["75u8", "76u8", "1u8"]		->	[7, "7i8, 0i8, 0i8, 0i8"]
+		["74u8", "77u8", "2u8"]		->	[0, "0i8, 5i8, 7i8, 0i8"]
+		["73u8", "77u8", "3u8"]		->	[0, "0i8, 3i8, 5i8, 7i8"]
+		["72u8", "76u8", "4u8"]		->	[2, "2i8, 3i8, 5i8, 7i8"]
 	]
 						// Takes source address, destination address and length.
 						// Copies the source array with given length to the destination.
@@ -1253,9 +918,9 @@ test_program! {
 
 test_program! {
 	strcpy [
-		["63u8", "60u8"]	->	[255, "255u8, 223u8, 0u8, 255u8"] : []
-		["63u8", "59u8"]	->	[255, "255u8, 211u8, 223u8, 0u8"] : []
-		["62u8", "58u8"]	->	[199, "199u8, 211u8, 223u8, 0u8"] : []
+		["63u8", "60u8"]	->	[255, "255u8, 223u8, 0u8, 255u8"]
+		["63u8", "59u8"]	->	[255, "255u8, 211u8, 223u8, 0u8"]
+		["62u8", "58u8"]	->	[199, "199u8, 211u8, 223u8, 0u8"]
 	]
 					// Takes destination address and source address.
 					// Copies the string from source to destination including final null character
@@ -1307,30 +972,12 @@ test_program! {
 	"dst4:"				".bytes u8, 255"
 }
 
-#[substitute_item(
-	shared_metrics [
-		IssuedBranches		: 0
-		IssuedReturns		: 2
-		IssuedCalls			: 1
-		TriggeredBranches	: 0
-		TriggeredReturns	: 2
-		TriggeredCalls		: 1
-		ConsumedOperands	: 3
-		ConsumedBytes		: 3
-		QueuedValues		: 3
-		QueuedValueBytes	: 3
-		ReorderedOperands	: 3
-		InstructionReads	: 8
-		DataReads			: 0
-		DataReadBytes		: 0
-	];
-)]
 test_program! {
 	simple_call [
-		["0u8"] 	-> [3, "3u8"]		: [ shared_metrics ]
-		["1u8"] 	-> [4, "4u8"]		: [ shared_metrics ]
-		["2u8"] 	-> [5, "5u8"]		: [ shared_metrics ]
-		["244u8"]	-> [247, "247u8"]	: [ shared_metrics ]
+		["0u8"] 	-> [3, "3u8"]
+		["1u8"] 	-> [4, "4u8"]
+		["2u8"] 	-> [5, "5u8"]
+		["244u8"]	-> [247, "247u8"]
 	]
 
 	"entry:"
@@ -1348,30 +995,12 @@ test_program! {
 					"ret 0"
 }
 
-#[substitute_item(
-	shared_metrics [
-		IssuedBranches		: 0
-		IssuedReturns		: 2
-		IssuedCalls			: 1
-		TriggeredBranches	: 0
-		TriggeredReturns	: 2
-		TriggeredCalls		: 1
-		ConsumedOperands	: 3
-		ConsumedBytes		: 3
-		QueuedValues		: 3
-		QueuedValueBytes	: 3
-		ReorderedOperands	: 1
-		InstructionReads	: 7
-		DataReads			: 0
-		DataReadBytes		: 0
-	];
-)]
 test_program! {
 	queue_past_call [
-		["0u8"] 	-> [3, "3u8"]		: [ shared_metrics ]
-		["1u8"] 	-> [4, "4u8"]		: [ shared_metrics ]
-		["2u8"] 	-> [5, "5u8"]		: [ shared_metrics ]
-		["244u8"]	-> [247, "247u8"]	: [ shared_metrics ]
+		["0u8"] 	-> [3, "3u8"]
+		["1u8"] 	-> [4, "4u8"]
+		["2u8"] 	-> [5, "5u8"]
+		["244u8"]	-> [247, "247u8"]
 	]
 
 	"entry:"
@@ -1391,10 +1020,10 @@ test_program! {
 
 test_program! {
 	cmp_i8 [
-		["0u8", "0u8"] 	-> [0, "0i8"]		: []
-		["0u8", "1u8"] 	-> [142, "-114i8"]	: []
-		["1u8", "0u8"] 	-> [114, "114i8"]	: []
-		["0u8", "2u8"] 	-> [128, "-128i8"]	: []
+		["0u8", "0u8"] 	-> [0, "0i8"]
+		["0u8", "1u8"] 	-> [142, "-114i8"]
+		["1u8", "0u8"] 	-> [114, "114i8"]
+		["0u8", "2u8"] 	-> [128, "-128i8"]
 	]
 
 	"entry:"
@@ -1433,60 +1062,60 @@ test_program! {
 test_program! {
 	bsearch [
 		// Empty array
-		["2i8", "0u8", "1u8"] 	-> [0, "0u8"]		: []
-		["2i16", "0u8", "2u8"] 	-> [0, "0u8"]		: []
+		["2i8", "0u8", "1u8"] 	-> [0, "0u8"]
+		["2i16", "0u8", "2u8"] 	-> [0, "0u8"]
 		// 1 element array
-		["-1i8", "1u8", "1u8"] 	-> [0, "0u8"]		: []
-		["0i8", "1u8", "1u8"] 	-> [4, "4u8"]		: []
-		["7i8", "1u8", "1u8"] 	-> [0, "0u8"]		: []
-		["-1i8", "1u8", "2u8"] 	-> [0, "0u8"]		: []
-		["0i8", "1u8", "2u8"] 	-> [8, "8u8"]		: []
-		["7i8", "1u8", "2u8"] 	-> [0, "0u8"]		: []
+		["-1i8", "1u8", "1u8"] 	-> [0, "0u8"]
+		["0i8", "1u8", "1u8"] 	-> [4, "4u8"]
+		["7i8", "1u8", "1u8"] 	-> [0, "0u8"]
+		["-1i8", "1u8", "2u8"] 	-> [0, "0u8"]
+		["0i8", "1u8", "2u8"] 	-> [8, "8u8"]
+		["7i8", "1u8", "2u8"] 	-> [0, "0u8"]
 		// 2 element array
-		["-1i8", "2u8", "1u8"] 	-> [0, "0u8"]		: []
-		["0i8", "2u8", "1u8"] 	-> [4, "4u8"]		: []
-		["2i8", "2u8", "1u8"] 	-> [5, "5u8"]		: []
-		["7i8", "2u8", "1u8"] 	-> [0, "0u8"]		: []
-		["-1i8", "2u8", "2u8"] 	-> [0, "0u8"]		: []
-		["0i8", "2u8", "2u8"] 	-> [8, "8u8"]		: []
-		["2i8", "2u8", "2u8"] 	-> [10, "10u8"]		: []
-		["7i8", "2u8", "2u8"] 	-> [0, "0u8"]		: []
+		["-1i8", "2u8", "1u8"] 	-> [0, "0u8"]
+		["0i8", "2u8", "1u8"] 	-> [4, "4u8"]
+		["2i8", "2u8", "1u8"] 	-> [5, "5u8"]
+		["7i8", "2u8", "1u8"] 	-> [0, "0u8"]
+		["-1i8", "2u8", "2u8"] 	-> [0, "0u8"]
+		["0i8", "2u8", "2u8"] 	-> [8, "8u8"]
+		["2i8", "2u8", "2u8"] 	-> [10, "10u8"]
+		["7i8", "2u8", "2u8"] 	-> [0, "0u8"]
 		// 3 element array
-		["-1i8", "3u8", "1u8"] 	-> [0, "0u8"]		: []
-		["0i8", "3u8", "1u8"] 	-> [4, "4u8"]		: []
-		["2i8", "3u8", "1u8"] 	-> [5, "5u8"]		: []
-		["4i8", "3u8", "1u8"] 	-> [6, "6u8"]		: []
-		["7i8", "3u8", "1u8"] 	-> [0, "0u8"]		: []
-		["-1i8", "3u8", "2u8"] 	-> [0, "0u8"]		: []
-		["0i8", "3u8", "2u8"] 	-> [8, "8u8"]		: []
-		["2i8", "3u8", "2u8"] 	-> [10, "10u8"]		: []
-		["4i8", "3u8", "2u8"] 	-> [12, "12u8"]		: []
-		["7i8", "3u8", "2u8"] 	-> [0, "0u8"]		: []
+		["-1i8", "3u8", "1u8"] 	-> [0, "0u8"]
+		["0i8", "3u8", "1u8"] 	-> [4, "4u8"]
+		["2i8", "3u8", "1u8"] 	-> [5, "5u8"]
+		["4i8", "3u8", "1u8"] 	-> [6, "6u8"]
+		["7i8", "3u8", "1u8"] 	-> [0, "0u8"]
+		["-1i8", "3u8", "2u8"] 	-> [0, "0u8"]
+		["0i8", "3u8", "2u8"] 	-> [8, "8u8"]
+		["2i8", "3u8", "2u8"] 	-> [10, "10u8"]
+		["4i8", "3u8", "2u8"] 	-> [12, "12u8"]
+		["7i8", "3u8", "2u8"] 	-> [0, "0u8"]
 		// 4 element array
-		["-1i8", "4u8", "1u8"] 	-> [0, "0u8"]		: []
-		["0i8", "4u8", "1u8"] 	-> [4, "4u8"]		: []
-		["2i8", "4u8", "1u8"] 	-> [5, "5u8"]		: []
-		["4i8", "4u8", "1u8"] 	-> [6, "6u8"]		: []
-		["6i8", "4u8", "1u8"] 	-> [7, "7u8"]		: []
-		["7i8", "4u8", "1u8"] 	-> [0, "0u8"]		: []
-		["-1i8", "4u8", "2u8"] 	-> [0, "0u8"]		: []
-		["0i8", "4u8", "2u8"] 	-> [8, "8u8"]		: []
-		["2i8", "4u8", "2u8"] 	-> [10, "10u8"]		: []
-		["4i8", "4u8", "2u8"] 	-> [12, "12u8"]		: []
-		["6i8", "4u8", "2u8"] 	-> [14, "14u8"]		: []
-		["7i8", "4u8", "2u8"] 	-> [0, "0u8"]		: []
+		["-1i8", "4u8", "1u8"] 	-> [0, "0u8"]
+		["0i8", "4u8", "1u8"] 	-> [4, "4u8"]
+		["2i8", "4u8", "1u8"] 	-> [5, "5u8"]
+		["4i8", "4u8", "1u8"] 	-> [6, "6u8"]
+		["6i8", "4u8", "1u8"] 	-> [7, "7u8"]
+		["7i8", "4u8", "1u8"] 	-> [0, "0u8"]
+		["-1i8", "4u8", "2u8"] 	-> [0, "0u8"]
+		["0i8", "4u8", "2u8"] 	-> [8, "8u8"]
+		["2i8", "4u8", "2u8"] 	-> [10, "10u8"]
+		["4i8", "4u8", "2u8"] 	-> [12, "12u8"]
+		["6i8", "4u8", "2u8"] 	-> [14, "14u8"]
+		["7i8", "4u8", "2u8"] 	-> [0, "0u8"]
 		// 5 element array
-		["-1i8", "5u8", "2u8"] 	-> [0, "0u8"]		: []
-		["0i8", "5u8", "2u8"] 	-> [8, "8u8"]		: []
-		["1i8", "5u8", "2u8"] 	-> [0, "0u8"]		: []
-		["2i8", "5u8", "2u8"] 	-> [10, "10u8"]		: []
-		["3i8", "5u8", "2u8"] 	-> [0, "0u8"]		: []
-		["4i8", "5u8", "2u8"] 	-> [12, "12u8"]		: []
-		["5i8", "5u8", "2u8"] 	-> [0, "0u8"]		: []
-		["6i8", "5u8", "2u8"] 	-> [14, "14u8"]		: []
-		["7i8", "5u8", "2u8"] 	-> [0, "0u8"]		: []
-		["8i8", "5u8", "2u8"] 	-> [16, "16u8"]		: []
-		["9i8", "5u8", "2u8"] 	-> [0, "0u8"]		: []
+		["-1i8", "5u8", "2u8"] 	-> [0, "0u8"]
+		["0i8", "5u8", "2u8"] 	-> [8, "8u8"]
+		["1i8", "5u8", "2u8"] 	-> [0, "0u8"]
+		["2i8", "5u8", "2u8"] 	-> [10, "10u8"]
+		["3i8", "5u8", "2u8"] 	-> [0, "0u8"]
+		["4i8", "5u8", "2u8"] 	-> [12, "12u8"]
+		["5i8", "5u8", "2u8"] 	-> [0, "0u8"]
+		["6i8", "5u8", "2u8"] 	-> [14, "14u8"]
+		["7i8", "5u8", "2u8"] 	-> [0, "0u8"]
+		["8i8", "5u8", "2u8"] 	-> [16, "16u8"]
+		["9i8", "5u8", "2u8"] 	-> [0, "0u8"]
 	]
 								"echo =>1"
 								"jmp entry, 0"
@@ -1655,39 +1284,39 @@ test_program! {
 
 test_program! {
 	hexval [
-		["0u8"] 	-> [0, "0u8"]		: [  ]
-		["47u8"] 	-> [0, "0u8"]		: [  ]
+		["0u8"] 	-> [0, "0u8"]
+		["47u8"] 	-> [0, "0u8"]
 
-		["48u8"] 	-> [0, "0u8"]		: [  ] // '0' - '9'
-		["49u8"] 	-> [1, "1u8"]		: [  ]
-		["50u8"] 	-> [2, "2u8"]		: [  ]
-		["51u8"] 	-> [3, "3u8"]		: [  ]
-		["52u8"] 	-> [4, "4u8"]		: [  ]
-		["53u8"] 	-> [5, "5u8"]		: [  ]
-		["54u8"] 	-> [6, "6u8"]		: [  ]
-		["55u8"] 	-> [7, "7u8"]		: [  ]
-		["56u8"] 	-> [8, "8u8"]		: [  ]
-		["57u8"] 	-> [9, "9u8"]		: [  ]
+		["48u8"] 	-> [0, "0u8"] // '0' - '9'
+		["49u8"] 	-> [1, "1u8"]
+		["50u8"] 	-> [2, "2u8"]
+		["51u8"] 	-> [3, "3u8"]
+		["52u8"] 	-> [4, "4u8"]
+		["53u8"] 	-> [5, "5u8"]
+		["54u8"] 	-> [6, "6u8"]
+		["55u8"] 	-> [7, "7u8"]
+		["56u8"] 	-> [8, "8u8"]
+		["57u8"] 	-> [9, "9u8"]
 
-		["58u8"] 	-> [0, "0u8"]		: [  ]
-		["64u8"] 	-> [0, "0u8"]		: [  ]
+		["58u8"] 	-> [0, "0u8"]
+		["64u8"] 	-> [0, "0u8"]
 
-		["65u8"] 	-> [10, "10u8"]		: [  ] // 'A' - 'F'
-		["66u8"] 	-> [11, "11u8"]		: [  ]
-		["67u8"] 	-> [12, "12u8"]		: [  ]
-		["68u8"] 	-> [13, "13u8"]		: [  ]
-		["69u8"] 	-> [14, "14u8"]		: [  ]
-		["70u8"] 	-> [15, "15u8"]		: [  ]
+		["65u8"] 	-> [10, "10u8"] // 'A' - 'F'
+		["66u8"] 	-> [11, "11u8"]
+		["67u8"] 	-> [12, "12u8"]
+		["68u8"] 	-> [13, "13u8"]
+		["69u8"] 	-> [14, "14u8"]
+		["70u8"] 	-> [15, "15u8"]
 
-		["71u8"] 	-> [0, "0u8"]		: [  ]
-		["96u8"] 	-> [0, "0u8"]		: [  ]
+		["71u8"] 	-> [0, "0u8"]
+		["96u8"] 	-> [0, "0u8"]
 
-		["97u8"] 	-> [10, "10u8"]		: [  ] // 'a' - 'f'
-		["98u8"] 	-> [11, "11u8"]		: [  ]
-		["99u8"] 	-> [12, "12u8"]		: [  ]
-		["100u8"] 	-> [13, "13u8"]		: [  ]
-		["101u8"] 	-> [14, "14u8"]		: [  ]
-		["102u8"] 	-> [15, "15u8"]		: [  ]
+		["97u8"] 	-> [10, "10u8"] // 'a' - 'f'
+		["98u8"] 	-> [11, "11u8"]
+		["99u8"] 	-> [12, "12u8"]
+		["100u8"] 	-> [13, "13u8"]
+		["101u8"] 	-> [14, "14u8"]
+		["102u8"] 	-> [15, "15u8"]
 	]
 	// Input: u8 char value. Output: u8 the numeric value represented
 	"entry:"
@@ -1727,39 +1356,39 @@ test_program! {
 
 test_program! {
 	isxdigit [
-		["0u8"] 	-> [0, "0u8"]		: [  ]
-		["47u8"] 	-> [0, "0u8"]		: [  ]
+		["0u8"] 	-> [0, "0u8"]
+		["47u8"] 	-> [0, "0u8"]
 
-		["48u8"] 	-> [1, "1u8"]		: [  ] // '0' - '9'
-		["49u8"] 	-> [1, "1u8"]		: [  ]
-		["50u8"] 	-> [1, "1u8"]		: [  ]
-		["51u8"] 	-> [1, "1u8"]		: [  ]
-		["52u8"] 	-> [1, "1u8"]		: [  ]
-		["53u8"] 	-> [1, "1u8"]		: [  ]
-		["54u8"] 	-> [1, "1u8"]		: [  ]
-		["55u8"] 	-> [1, "1u8"]		: [  ]
-		["56u8"] 	-> [1, "1u8"]		: [  ]
-		["57u8"] 	-> [1, "1u8"]		: [  ]
+		["48u8"] 	-> [1, "1u8"] // '0' - '9'
+		["49u8"] 	-> [1, "1u8"]
+		["50u8"] 	-> [1, "1u8"]
+		["51u8"] 	-> [1, "1u8"]
+		["52u8"] 	-> [1, "1u8"]
+		["53u8"] 	-> [1, "1u8"]
+		["54u8"] 	-> [1, "1u8"]
+		["55u8"] 	-> [1, "1u8"]
+		["56u8"] 	-> [1, "1u8"]
+		["57u8"] 	-> [1, "1u8"]
 
-		["58u8"] 	-> [0, "0u8"]		: [  ]
-		["64u8"] 	-> [0, "0u8"]		: [  ]
+		["58u8"] 	-> [0, "0u8"]
+		["64u8"] 	-> [0, "0u8"]
 
-		["65u8"] 	-> [1, "1u8"]		: [  ] // 'A' - 'F'
-		["66u8"] 	-> [1, "1u8"]		: [  ]
-		["67u8"] 	-> [1, "1u8"]		: [  ]
-		["68u8"] 	-> [1, "1u8"]		: [  ]
-		["69u8"] 	-> [1, "1u8"]		: [  ]
-		["70u8"] 	-> [1, "1u8"]		: [  ]
+		["65u8"] 	-> [1, "1u8"] // 'A' - 'F'
+		["66u8"] 	-> [1, "1u8"]
+		["67u8"] 	-> [1, "1u8"]
+		["68u8"] 	-> [1, "1u8"]
+		["69u8"] 	-> [1, "1u8"]
+		["70u8"] 	-> [1, "1u8"]
 
-		["71u8"] 	-> [0, "0u8"]		: [  ]
-		["96u8"] 	-> [0, "0u8"]		: [  ]
+		["71u8"] 	-> [0, "0u8"]
+		["96u8"] 	-> [0, "0u8"]
 
-		["97u8"] 	-> [1, "1u8"]		: [  ] // 'a' - 'f'
-		["98u8"] 	-> [1, "1u8"]		: [  ]
-		["99u8"] 	-> [1, "1u8"]		: [  ]
-		["100u8"] 	-> [1, "1u8"]		: [  ]
-		["101u8"] 	-> [1, "1u8"]		: [  ]
-		["102u8"] 	-> [1, "1u8"]		: [  ]
+		["97u8"] 	-> [1, "1u8"] // 'a' - 'f'
+		["98u8"] 	-> [1, "1u8"]
+		["99u8"] 	-> [1, "1u8"]
+		["100u8"] 	-> [1, "1u8"]
+		["101u8"] 	-> [1, "1u8"]
+		["102u8"] 	-> [1, "1u8"]
 	]
 	// Input: u8 char value. Output: u8 the numeric value represented
 	"entry:"
@@ -1784,17 +1413,17 @@ test_program! {
 test_program! {
 	// from the C std function 'atol', but only handling the hex case
 	atol_hex [
-		["19u8"] 	-> [0, "0u8"]		: [  ]
-		["18u8"] 	-> [16, "16u8"]		: [  ]
-		["4u8"] 	-> [254, "254u8"]	: [  ]
-		["5u8"] 	-> [14, "14u8"]		: [  ]
-		["7u8"] 	-> [203, "203u8"]	: [  ]
-		["8u8"] 	-> [11, "11u8"]		: [  ]
-		["10u8"] 	-> [152, "152u8"]	: [  ]
-		["11u8"] 	-> [8, "8u8"]		: [  ]
-		["13u8"] 	-> [111, "111u8"]	: [  ]
-		["14u8"] 	-> [15, "15u8"]		: [  ]
-		["16u8"] 	-> [16, "16u8"]		: [  ] // Check correct overflow behavior
+		["19u8"] 	-> [0, "0u8"]
+		["18u8"] 	-> [16, "16u8"]
+		["4u8"] 	-> [254, "254u8"]
+		["5u8"] 	-> [14, "14u8"]
+		["7u8"] 	-> [203, "203u8"]
+		["8u8"] 	-> [11, "11u8"]
+		["10u8"] 	-> [152, "152u8"]
+		["11u8"] 	-> [8, "8u8"]
+		["13u8"] 	-> [111, "111u8"]
+		["14u8"] 	-> [15, "15u8"]
+		["16u8"] 	-> [16, "16u8"] // Check correct overflow behavior
 	]
 	// Input: c string (*char) with hex value (without initial "0x") with null-terminator.
 	// Output: u64 value (todo: right now only u8 because simulator does not support ALU of different operand types)

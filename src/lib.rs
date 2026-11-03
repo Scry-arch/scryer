@@ -1,5 +1,6 @@
 #![cfg_attr(feature = "fail-on-warnings", deny(warnings))]
 
+use crate::events::StepTracker;
 use clap::Parser;
 use num_bigint::{BigInt, BigUint, Sign};
 use object::{
@@ -8,12 +9,14 @@ use object::{
 	Object, ObjectSegment,
 };
 use regex::Regex;
-use scry_asm::Assemble;
+use scry_asm::{Assemble, Disassemble};
 use scry_sim::{
-	Block, BlockedMemory, CallFrameState, ExecError, ExecState, Executor, Memory, Metric,
-	MetricReporter, OperandList, Scalar, StackFrame, TrackReport, Value, ValueType,
+	Block, BlockedMemory, CallFrameState, Event, ExecError, ExecState, Executor, IdEvent, Memory,
+	OperandEvent, OperandList, Scalar, StackFrame, Value, ValueType,
 };
 use std::{collections::HashMap, io::Write, time::Instant};
+
+mod events;
 
 #[derive(clap::ValueEnum, Clone, Eq, PartialEq)]
 enum TimeoutType
@@ -73,8 +76,10 @@ pub struct Cli
 	#[arg(value_enum, default_value_t = TimeoutType::Seconds)]
 	timeout_type: TimeoutType,
 
+	/// Prints simulation events
 	#[clap(long)]
-	debug: bool,
+	#[arg(default_value_t = false)]
+	print_events: bool,
 }
 
 fn parse_input(input: &String, labels: HashMap<&str, usize>) -> Value
@@ -149,13 +154,83 @@ fn value_to_string(val: &Value) -> String
 	val
 }
 
-fn print_metrics(tracker: &TrackReport, mut stdout: impl Write)
+fn print_events(tracker: &StepTracker, mut stdout: impl Write)
 {
-	writeln!(stdout, "\n----------  Simulation Metrics  ----------").unwrap();
-	for metric in Metric::all()
+	writeln!(stdout, "\n----------  Simulation Events  ----------").unwrap();
+	for step_events in tracker.all_events()
 	{
-		let metric_val = tracker.get_stat(metric);
-		writeln!(stdout, "{:?}: {}", metric, metric_val).unwrap();
+		for event in step_events
+		{
+			match event
+			{
+				Event::Instruction(addr, instr) =>
+				{
+					write!(
+						stdout,
+						"Instruction: ({:#x}) {}",
+						addr,
+						scry_asm::Raw::disassemble(instr.encode().to_le_bytes().into_iter())
+							.unwrap()
+					)
+				},
+				Event::Id(id, id_typ) =>
+				{
+					match id_typ
+					{
+						IdEvent::Operand(OperandEvent::Produce(t)) =>
+						{
+							write!(stdout, "Operand: Produce({},", id).unwrap();
+							if t.is_signed_int()
+							{
+								write!(stdout, "i").unwrap();
+							}
+							else if t.is_unsigned_int()
+							{
+								write!(stdout, "u").unwrap();
+							}
+							else
+							{
+								todo!()
+							}
+							writeln!(stdout, "{})", t.size() * 8)
+						},
+						IdEvent::Operand(p) => writeln!(stdout, "Operand: {:?}({})", p, id),
+						IdEvent::ControlIssue(i) => writeln!(stdout, "Issue: {:?}({})", i, id),
+						IdEvent::ControlTrigger(t) => writeln!(stdout, "Trigger: {:?}({})", t, id),
+						_ => writeln!(stdout, "IdEvent({}): {:?}", id, id_typ),
+					}
+				},
+				Event::Load(addr, idx, bytes) =>
+				{
+					if let Some(idx) = idx
+					{
+						writeln!(stdout, "LoadStack({:#x},{}): {}", addr, idx, bytes)
+					}
+					else
+					{
+						writeln!(stdout, "Load({:#x}): {}", addr, bytes)
+					}
+				},
+				Event::Store(addr, idx, bytes) =>
+				{
+					if let Some(idx) = idx
+					{
+						writeln!(stdout, "StoreStack({:#x},{}): {}", addr, idx, bytes)
+					}
+					else
+					{
+						writeln!(stdout, "Store({:#x}): {}", addr, bytes)
+					}
+				},
+				Event::Stack(section, addr) =>
+				{
+					writeln!(stdout, "Stack: {:?}({:#x})", section, addr)
+				},
+				_ => writeln!(stdout, "Event: {:?}", event),
+			}
+			.unwrap();
+		}
+		writeln!(stdout, "STEP_END").unwrap();
 	}
 }
 
@@ -252,7 +327,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			address: stack_base,
 			size: 0,
 		},
-		base_size: 0,
+		private_size: 0,
 	};
 	let original_state = ExecState {
 		addr_space: address_space,
@@ -272,27 +347,20 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 		stack_buffer,
 		more_depth: 1, // Total depth = 4
 	};
-	let mut tracker = TrackReport::new();
-	if args.debug
-	{
-		dbg!(&original_state);
-	}
+	let mut events = StepTracker::new();
 
 	// Add stack memery block
 	memory.add_block((0..stack_buffer).map(|_| 0), stack_base);
 
 	let mut res =
-		Executor::<BlockedMemory, _>::from_state(&original_state, &mut memory).step(&mut tracker);
+		Executor::<BlockedMemory, _>::from_state(&original_state, &mut memory, &mut events)
+			.step(&mut events);
 
 	let start_time = Instant::now();
 	while res.is_ok()
 	{
 		let exec = res.unwrap();
 		let state = exec.state();
-		if args.debug
-		{
-			dbg!(&state);
-		}
 
 		if state.frame_stack.len() == 0
 		{
@@ -301,7 +369,8 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			{
 				if args.machine_mode
 				{
-					// Return the integer value of the first return operand or 123 if unavailable
+					// Return the integer value of the first return operand or
+					// 123 if unavailable
 					return returned_values
 						.iter()
 						.next()
@@ -320,7 +389,10 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 						write!(stdout, "{}, ", val_str).unwrap();
 					}
 
-					print_metrics(&tracker, stdout);
+					if args.print_events
+					{
+						print_events(&events, stdout);
+					}
 					return 0;
 				}
 			}
@@ -331,19 +403,24 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 
 		if args.timeout > 0
 			&& ((args.timeout_type == TimeoutType::Instructions
-				&& tracker.get_stat(Metric::InstructionReads) == args.timeout)
+				&& events.all_events().count() == args.timeout) // We assume one instruction per step
 				| (args.timeout_type == TimeoutType::Seconds
 					&& start_time.elapsed().as_secs() > args.timeout as u64))
 		{
 			if !args.machine_mode
 			{
 				writeln!(stdout, "----------  Timeout  ----------").unwrap();
-				print_metrics(&tracker, stdout);
+
+				if args.print_events
+				{
+					print_events(&events, stdout);
+				}
 			}
 			return 123;
 		}
 
-		res = exec.step(&mut tracker);
+		events.new_step();
+		res = exec.step(&mut events);
 	}
 	// Implicit failure
 	match res
@@ -354,7 +431,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			{
 				writeln!(stdout, "----------  Error  ----------").unwrap();
 				writeln!(stdout, "{:?}", err).unwrap();
-				print_metrics(&tracker, stdout);
+				print_events(&events, stdout);
 			}
 		},
 		Ok(_) => unreachable!(),
