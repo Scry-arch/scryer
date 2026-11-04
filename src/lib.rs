@@ -6,7 +6,7 @@ use num_bigint::{BigInt, BigUint, Sign};
 use object::{
 	elf::PT_LOAD,
 	read::elf::{ElfFile, FileHeader, ProgramHeader},
-	Object, ObjectSegment,
+	Object, ObjectSegment, ObjectSymbol, SymbolKind,
 };
 use regex::Regex;
 use scry_asm::{Assemble, Disassemble};
@@ -58,7 +58,7 @@ pub struct Cli
 	machine_mode: bool,
 
 	/// The target triple of the input file
-	#[clap(long)]
+	#[clap(long, value_name = "TRIPLE")]
 	#[arg(value_enum, default_value_t = Target::Auto)]
 	target: Target,
 
@@ -88,6 +88,20 @@ pub struct Cli
 	#[clap(long)]
 	#[arg(default_value_t = false)]
 	print_events_buffered: bool,
+
+	/// Where the initial stack base should be located.
+	///
+	/// If given an integer (decimal or hexadecimal), the stack base starts at
+	/// that address. If given a string label, the corresponding address will be
+	/// used.
+	#[clap(long, value_name = "ADDRESS")]
+	#[arg(default_value_t = String::new())]
+	stack_base: String,
+
+	/// Initial size of the stack buffer.
+	#[clap(long, value_name = "BYTES")]
+	#[arg(default_value_t = 1 << 12)]
+	stack_buffer: usize,
 }
 
 fn parse_input(input: &String, labels: HashMap<&str, usize>) -> Value
@@ -258,8 +272,11 @@ fn print_events_final(tracker: &StepTracker, out: &mut Option<Box<dyn Write>>, b
 }
 
 /// Extracts the contents of an ELF file (both 32- and 64-bit), returning the
-/// entry addres, the memory, and the address width in powers of 2.
-fn extract_elf<'a, E: FileHeader>(elf: ElfFile<'a, E, &'a [u8]>) -> (usize, BlockedMemory, u8)
+/// entry addres, the memory, and the address width in powers of 2, and the
+/// symbol table.
+fn extract_elf<'a, E: FileHeader>(
+	elf: ElfFile<'a, E, &'a [u8]>,
+) -> (usize, BlockedMemory, u8, HashMap<String, usize>)
 {
 	let mut mem = BlockedMemory::empty();
 	for segment in elf.segments()
@@ -278,12 +295,57 @@ fn extract_elf<'a, E: FileHeader>(elf: ElfFile<'a, E, &'a [u8]>) -> (usize, Bloc
 			}
 		}
 	}
-	(elf.entry() as usize, mem, if elf.is_64() { 3 } else { 2 })
+
+	let symbols = elf
+		.symbols()
+		.filter(|sym| {
+			!sym.is_undefined()
+				&& matches!(
+					sym.kind(),
+					SymbolKind::Text | SymbolKind::Data | SymbolKind::Unknown
+				)
+		})
+		.filter_map(|sym| {
+			let name = sym.name().ok()?;
+			if name.is_empty()
+			{
+				return None;
+			}
+			Some((name.to_string(), sym.address() as usize))
+		})
+		.collect();
+
+	(
+		elf.entry() as usize,
+		mem,
+		if elf.is_64() { 3 } else { 2 },
+		symbols,
+	)
+}
+
+/// Extracts the ELF file and overwrites the give stack base if necessary
+fn extract_elf_and_stack_base<'a, E: FileHeader>(
+	elf: ElfFile<'a, E, &'a [u8]>,
+	stack_base_arg: &String,
+	stack_base: &mut usize,
+) -> (usize, BlockedMemory, u8)
+{
+	let (e, m, a, syms) = extract_elf(elf);
+
+	if let Some(addr) = syms.get(stack_base_arg)
+	{
+		*stack_base = *addr;
+	}
+
+	(e, m, a)
 }
 
 pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 {
+	// Read program
 	let contents = std::fs::read(args.path).unwrap();
+
+	// Prepare event output
 	let mut event_print_out = args.print_events.map(|p| -> Box<dyn Write> {
 		match p
 		{
@@ -291,6 +353,22 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			Some(path) => Box::new(BufWriter::new(std::fs::File::create(path).unwrap())),
 		}
 	});
+
+	// Default stack base
+	let mut stack_base = 1 << 20;
+
+	// Check for absolute stack base
+	if args.stack_base.starts_with("0x")
+	{
+		if let Ok(addr) = usize::from_str_radix(args.stack_base.trim_start_matches("0x"), 16)
+		{
+			stack_base = addr;
+		}
+	}
+	else if let Ok(addr) = args.stack_base.parse::<usize>()
+	{
+		stack_base = addr;
+	}
 
 	let (entry, mut memory, address_space) = match args.target
 	{
@@ -313,7 +391,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 		{
 			if let object::File::Elf32(elf) = object::File::parse(&*contents).unwrap()
 			{
-				extract_elf(elf)
+				extract_elf_and_stack_base(elf, &args.stack_base, &mut stack_base)
 			}
 			else
 			{
@@ -324,7 +402,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 		{
 			if let object::File::Elf64(elf) = object::File::parse(&*contents).unwrap()
 			{
-				extract_elf(elf)
+				extract_elf_and_stack_base(elf, &args.stack_base, &mut stack_base)
 			}
 			else
 			{
@@ -332,6 +410,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			}
 		},
 	};
+
 	// Ready inputs
 	let mut op_queue = HashMap::new();
 	if !args.input.is_empty()
@@ -347,11 +426,6 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 		op_queue.insert(0, OperandList::new(ops.remove(0), ops));
 	}
 
-	// The stack block sits above the program image, which starts at 0 and may
-	// grow to 1 MiB: the Scry-5 board stops it at 64 KiB, but larger programs
-	// can be simulated.
-	let stack_base = 1 << 20;
-	let stack_buffer = 1 << 12;
 	let base_stack = StackFrame {
 		block: Block {
 			address: stack_base,
@@ -374,13 +448,13 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			op_queue: HashMap::new(),
 			stack: base_stack,
 		}],
-		stack_buffer,
+		stack_buffer: args.stack_buffer,
 		more_depth: 1, // Total depth = 4
 	};
 	let mut events = StepTracker::new();
 
 	// Add stack memery block
-	memory.add_block((0..stack_buffer).map(|_| 0), stack_base);
+	memory.add_block((0..args.stack_buffer).map(|_| 0), stack_base);
 
 	let mut res =
 		Executor::<BlockedMemory, _>::from_state(&original_state, &mut memory, &mut events)

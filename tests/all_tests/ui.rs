@@ -1,10 +1,14 @@
 use crate::{all_tests::create_test_elf, TEMPORARY_DIR};
 use assert_cmd::cargo_bin_cmd;
+use object::{
+	build::elf::SectionData,
+	elf::{SHN_ABS, SHT_STRTAB, SHT_SYMTAB, STB_GLOBAL, STT_NOTYPE},
+};
 use predicates::prelude::{predicate, PredicateBooleanExt};
 use scry_asm::{Assemble, Raw};
 use std::{io::Write, iter::once, time::Duration};
 
-/// Tests can give input value relative to the build-in "entry" label.
+/// Tests can give input value relative to the built-in "entry" label.
 #[test]
 fn input_entry_offset()
 {
@@ -109,4 +113,131 @@ fn print_events_to_stdout()
 		.stdout(predicate::str::contains("Instruction: (0x2) ret 0"))
 		.stdout(predicate::str::contains("STEP_END").count(2))
 		.stderr(predicates::str::is_empty());
+}
+
+/// A program that returns the address of the stack base.
+const STACK_BASE_PROGRAM: [&str; 4] = ["saddr u8 [0]", "echo =>end", "ret end", "end:"];
+
+/// Runs the given program file with the given target and '--stack-base' flag
+/// (if any), checking that the returned stack address is as expected.
+fn assert_stack_base(
+	file: &std::path::Path,
+	target: &str,
+	stack_base: Option<&str>,
+	expected: usize,
+)
+{
+	let mut cmd = cargo_bin_cmd!("scryer");
+	cmd.arg(file)
+		.arg(format!("--target={}", target))
+		.arg("-i=1u8");
+	if let Some(stack_base) = stack_base
+	{
+		cmd.arg(format!("--stack-base={}", stack_base));
+	}
+
+	cmd.timeout(Duration::new(5, 0))
+		.assert()
+		.success()
+		.stdout(
+			predicate::str::is_match(format!("Returned Operands(.)*?\n{}u(32|64)", expected))
+				.unwrap(),
+		)
+		.stderr(predicates::str::is_empty());
+}
+
+/// Writes the stack base program to a temporary file as textual assembly.
+fn stack_base_assembly_file() -> tempfile::NamedTempFile
+{
+	std::fs::create_dir_all(TEMPORARY_DIR).unwrap();
+	let file = tempfile::Builder::new().tempfile_in(TEMPORARY_DIR).unwrap();
+	file.as_file()
+		.write_all(STACK_BASE_PROGRAM.join("\n").as_bytes())
+		.unwrap();
+	file
+}
+
+/// Tests that the stack base defaults to 1 MiB when '--stack-base' is not
+/// given.
+#[test]
+fn stack_base_default()
+{
+	let file = stack_base_assembly_file();
+	assert_stack_base(file.path(), "assembly", None, 1 << 20);
+}
+
+/// Tests that '--stack-base' accepts a decimal address.
+#[test]
+fn stack_base_decimal()
+{
+	let file = stack_base_assembly_file();
+	assert_stack_base(file.path(), "assembly", Some("65536"), 65536);
+}
+
+/// Tests that '--stack-base' accepts a hexadecimal address.
+#[test]
+fn stack_base_hex()
+{
+	let file = stack_base_assembly_file();
+	assert_stack_base(file.path(), "assembly", Some("0x20000"), 0x20000);
+}
+
+/// Tests that '--stack-base' accepts an ELF label, using its address.
+#[test]
+fn stack_base_elf32_label()
+{
+	test_stack_base_elf_label(false)
+}
+
+/// Tests that '--stack-base' accepts an ELF label, using its address.
+#[test]
+fn stack_base_elf64_label()
+{
+	test_stack_base_elf_label(true)
+}
+
+fn test_stack_base_elf_label(is_64_bit: bool)
+{
+	let stack_label_addr = 0x30000;
+	let assembly = Raw::assemble(STACK_BASE_PROGRAM.iter().cloned()).unwrap();
+
+	// Add a symbol to the ELF that names the stack location.
+	// It is an absolute, untyped, global symbol, which is what a linker emits
+	// for a symbol defined on its command line (e.g.
+	// '--defsym=my_stack=0x30000')
+	let mut elf = create_test_elf(assembly.as_slice(), 0, is_64_bit);
+	let symtab = elf.sections.add();
+	symtab.name = ".symtab".into();
+	symtab.sh_type = SHT_SYMTAB;
+	symtab.data = SectionData::Symbol;
+	let strtab = elf.sections.add();
+	strtab.name = ".strtab".into();
+	strtab.sh_type = SHT_STRTAB;
+	strtab.data = SectionData::String;
+	let symbol = elf.symbols.add();
+	symbol.name = "my_stack".into();
+	symbol.section = None;
+	symbol.st_shndx = SHN_ABS;
+	symbol.set_st_info(STB_GLOBAL, STT_NOTYPE);
+	symbol.st_value = stack_label_addr as u64;
+
+	let mut elf_bytes = Vec::new();
+	elf.write(&mut elf_bytes).unwrap();
+	std::fs::create_dir_all(TEMPORARY_DIR).unwrap();
+	let file = tempfile::Builder::new().tempfile_in(TEMPORARY_DIR).unwrap();
+	file.as_file().write_all(elf_bytes.as_slice()).unwrap();
+
+	assert_stack_base(
+		file.path(),
+		if is_64_bit
+		{
+			"scry64-unknown-none-elf"
+		}
+		else
+		{
+			"scry32-unknown-none-elf"
+		},
+		Some("my_stack"),
+		stack_label_addr,
+	);
 }
