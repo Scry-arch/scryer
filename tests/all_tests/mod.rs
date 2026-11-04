@@ -1,3 +1,4 @@
+use crate::TEMPORARY_DIR;
 use object::{
 	build::elf::{Builder, SectionData},
 	elf::{
@@ -6,6 +7,8 @@ use object::{
 	},
 	Endianness,
 };
+use std::io::Write;
+use tempfile::NamedTempFile;
 
 mod programs;
 mod timeout;
@@ -85,4 +88,13 @@ fn create_test_elf(code: &[u8], entry_addr: usize, is_64_bit: bool) -> Builder<'
 	shstrtab_section.data = SectionData::SectionString;
 
 	elf
+}
+
+/// Creates a temporary file containing the given bytes
+fn create_temp_file(content: &[u8]) -> NamedTempFile
+{
+	std::fs::create_dir_all(TEMPORARY_DIR).unwrap();
+	let program_file = tempfile::Builder::new().tempfile_in(TEMPORARY_DIR).unwrap();
+	program_file.as_file().write_all(content).unwrap();
+	program_file
 }

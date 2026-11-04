@@ -472,6 +472,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			// Done
 			if let Some(returned_values) = state.frame.op_queue.get(&0)
 			{
+				print_events_final(&events, &mut event_print_out, args.print_events_buffered);
 				if args.machine_mode
 				{
 					// Return the integer value of the first return operand or
@@ -486,8 +487,6 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 				}
 				else
 				{
-					print_events_final(&events, &mut event_print_out, args.print_events_buffered);
-
 					// Pretty print the returned operands
 					writeln!(stdout, "----------  Returned Operands  ----------").unwrap();
 					for val in returned_values.iter()
@@ -510,9 +509,9 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 				| (args.timeout_type == TimeoutType::Seconds
 					&& start_time.elapsed().as_secs() > args.timeout as u64))
 		{
+			print_events_final(&events, &mut event_print_out, args.print_events_buffered);
 			if !args.machine_mode
 			{
-				print_events_final(&events, &mut event_print_out, args.print_events_buffered);
 				writeln!(stdout, "----------  Timeout  ----------").unwrap();
 			}
 			return 123;
@@ -536,9 +535,9 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 	{
 		Err(err) =>
 		{
+			print_events_final(&events, &mut event_print_out, args.print_events_buffered);
 			if !args.machine_mode
 			{
-				print_events_final(&events, &mut event_print_out, args.print_events_buffered);
 				writeln!(stdout, "----------  Error  ----------").unwrap();
 				writeln!(stdout, "{:?}", err).unwrap();
 			}

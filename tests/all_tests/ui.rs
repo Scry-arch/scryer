@@ -1,4 +1,7 @@
-use crate::{all_tests::create_test_elf, TEMPORARY_DIR};
+use crate::{
+	all_tests::{create_temp_file, create_test_elf},
+	TEMPORARY_DIR,
+};
 use assert_cmd::cargo_bin_cmd;
 use object::{
 	build::elf::SectionData,
@@ -7,14 +10,39 @@ use object::{
 use predicates::prelude::{predicate, PredicateBooleanExt};
 use scry_asm::{Assemble, Raw};
 use std::{io::Write, iter::once, time::Duration};
+use tempfile::NamedTempFile;
+
+/// A program that increments the input
+const PROGRAM_ADD_RET: &'static str = "
+	add =>1
+	ret 0
+";
+
+/// A program that returns the address of the stack base.
+const STACK_BASE_PROGRAM: &'static str = "
+	saddr u8 [0]
+	echo =>end
+	ret end
+end:
+";
+
+/// Creates a temporary file with the `PROGRAM_ADD_RET` program.
+fn create_add_ret_program_file() -> NamedTempFile
+{
+	create_temp_file(PROGRAM_ADD_RET.as_bytes())
+}
+
+/// Writes the stack base program to a temporary file as textual assembly.
+fn stack_base_assembly_file() -> NamedTempFile
+{
+	create_temp_file(STACK_BASE_PROGRAM.as_bytes())
+}
 
 /// Tests can give input value relative to the built-in "entry" label.
 #[test]
 fn input_entry_offset()
 {
-	let program = "\
-		add =>1ret 0";
-	let assembly = Raw::assemble(once(program)).unwrap();
+	let assembly = Raw::assemble(once(PROGRAM_ADD_RET)).unwrap();
 
 	let test = |entry_addr, offset| {
 		let elf = create_test_elf(assembly.as_slice(), entry_addr, false);
@@ -48,15 +76,7 @@ fn input_entry_offset()
 #[test]
 fn print_events_to_file()
 {
-	// A program that runs one instruction and returns
-	let program = "\
-		add =>1ret 0";
-	std::fs::create_dir_all(TEMPORARY_DIR).unwrap();
-	let program_file = tempfile::Builder::new().tempfile_in(TEMPORARY_DIR).unwrap();
-	program_file
-		.as_file()
-		.write_all(program.as_bytes())
-		.unwrap();
+	let program_file = create_add_ret_program_file();
 	let events_file = tempfile::Builder::new().tempfile_in(TEMPORARY_DIR).unwrap();
 
 	let mut cmd = cargo_bin_cmd!("scryer");
@@ -88,15 +108,7 @@ fn print_events_to_file()
 #[test]
 fn print_events_to_stdout()
 {
-	// A program that runs one instruction and returns
-	let program = "\
-		add =>1ret 0";
-	std::fs::create_dir_all(TEMPORARY_DIR).unwrap();
-	let program_file = tempfile::Builder::new().tempfile_in(TEMPORARY_DIR).unwrap();
-	program_file
-		.as_file()
-		.write_all(program.as_bytes())
-		.unwrap();
+	let program_file = create_add_ret_program_file();
 
 	let mut cmd = cargo_bin_cmd!("scryer");
 	cmd.arg(program_file.path())
@@ -115,8 +127,65 @@ fn print_events_to_stdout()
 		.stderr(predicates::str::is_empty());
 }
 
-/// A program that returns the address of the stack base.
-const STACK_BASE_PROGRAM: [&str; 4] = ["saddr u8 [0]", "echo =>end", "ret end", "end:"];
+/// Runs a two-step program in machine mode with '--print-events' writing to a
+/// file, checking that the events of every step (including the last) are in
+/// the file when the program exits.
+fn assert_machine_mode_print_events_to_file(buffered: bool)
+{
+	let program_file = create_add_ret_program_file();
+	let events_file = tempfile::Builder::new().tempfile_in(TEMPORARY_DIR).unwrap();
+
+	let mut cmd = cargo_bin_cmd!("scryer");
+	cmd.arg(program_file.path())
+		.arg("--target=assembly")
+		.arg("--machine-mode")
+		.arg("-i=1u8")
+		.arg(format!(
+			"--print-events={}",
+			events_file.path().to_str().unwrap()
+		));
+	if buffered
+	{
+		cmd.arg("--print-events-buffered");
+	}
+
+	// Machine mode must still exit with the program's result and print nothing
+	cmd.timeout(Duration::new(5, 0))
+		.assert()
+		.code(predicate::eq(2))
+		.stdout(predicates::str::is_empty())
+		.stderr(predicates::str::is_empty());
+
+	// All steps must be in the file, including the final one
+	let events = std::fs::read_to_string(events_file.path()).unwrap();
+	assert!(
+		events.contains("Instruction: (0x0) add =>1"),
+		"First step missing from events file:\n{}",
+		events
+	);
+	assert!(
+		events.contains("Instruction: (0x2) ret 0"),
+		"Last step missing from events file:\n{}",
+		events
+	);
+	assert_eq!(events.matches("STEP_END").count(), 2);
+}
+
+/// Tests that in machine mode, unbuffered event printing writes the events of
+/// the last step before exiting.
+#[test]
+fn machine_mode_print_events_to_file()
+{
+	assert_machine_mode_print_events_to_file(false);
+}
+
+/// Tests that in machine mode, buffered event printing writes all events
+/// before exiting.
+#[test]
+fn machine_mode_print_events_buffered_to_file()
+{
+	assert_machine_mode_print_events_to_file(true);
+}
 
 /// Runs the given program file with the given target and '--stack-base' flag
 /// (if any), checking that the returned stack address is as expected.
@@ -144,17 +213,6 @@ fn assert_stack_base(
 				.unwrap(),
 		)
 		.stderr(predicates::str::is_empty());
-}
-
-/// Writes the stack base program to a temporary file as textual assembly.
-fn stack_base_assembly_file() -> tempfile::NamedTempFile
-{
-	std::fs::create_dir_all(TEMPORARY_DIR).unwrap();
-	let file = tempfile::Builder::new().tempfile_in(TEMPORARY_DIR).unwrap();
-	file.as_file()
-		.write_all(STACK_BASE_PROGRAM.join("\n").as_bytes())
-		.unwrap();
-	file
 }
 
 /// Tests that the stack base defaults to 1 MiB when '--stack-base' is not
@@ -199,7 +257,7 @@ fn stack_base_elf64_label()
 fn test_stack_base_elf_label(is_64_bit: bool)
 {
 	let stack_label_addr = 0x30000;
-	let assembly = Raw::assemble(STACK_BASE_PROGRAM.iter().cloned()).unwrap();
+	let assembly = Raw::assemble(STACK_BASE_PROGRAM.split_whitespace()).unwrap();
 
 	// Add a symbol to the ELF that names the stack location.
 	// It is an absolute, untyped, global symbol, which is what a linker emits
