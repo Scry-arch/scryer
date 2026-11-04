@@ -25,6 +25,15 @@ impl StepTracker
 	{
 		self.events.iter().map(|events| events.iter())
 	}
+
+	/// Deletes all events.
+	///
+	/// `new_step` must be called after this function to ensure correct event
+	/// tracking.
+	pub fn clear_events(&mut self)
+	{
+		self.events.clear();
+	}
 }
 
 impl EventTracker for StepTracker

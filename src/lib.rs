@@ -14,7 +14,11 @@ use scry_sim::{
 	Block, BlockedMemory, CallFrameState, Event, ExecError, ExecState, Executor, IdEvent, Memory,
 	OperandEvent, OperandList, Scalar, StackFrame, Value, ValueType,
 };
-use std::{collections::HashMap, io::Write, time::Instant};
+use std::{
+	collections::HashMap,
+	io::{BufWriter, Write},
+	time::Instant,
+};
 
 mod events;
 
@@ -76,10 +80,14 @@ pub struct Cli
 	#[arg(value_enum, default_value_t = TimeoutType::Seconds)]
 	timeout_type: TimeoutType,
 
-	/// Prints simulation events
+	/// Prints simulation events either to stdout or a file
+	#[clap(long, value_name = "FILE", num_args = 0..=1, require_equals = true)]
+	print_events: Option<Option<std::path::PathBuf>>,
+
+	/// Event will be buffered and only printing after the simulation terminates
 	#[clap(long)]
 	#[arg(default_value_t = false)]
-	print_events: bool,
+	print_events_buffered: bool,
 }
 
 fn parse_input(input: &String, labels: HashMap<&str, usize>) -> Value
@@ -154,9 +162,8 @@ fn value_to_string(val: &Value) -> String
 	val
 }
 
-fn print_events(tracker: &StepTracker, mut stdout: impl Write)
+fn print_events(tracker: &StepTracker, out: &mut impl Write)
 {
-	writeln!(stdout, "\n----------  Simulation Events  ----------").unwrap();
 	for step_events in tracker.all_events()
 	{
 		for event in step_events
@@ -166,7 +173,7 @@ fn print_events(tracker: &StepTracker, mut stdout: impl Write)
 				Event::Instruction(addr, instr) =>
 				{
 					write!(
-						stdout,
+						out,
 						"Instruction: ({:#x}) {}",
 						addr,
 						scry_asm::Raw::disassemble(instr.encode().to_le_bytes().into_iter())
@@ -179,58 +186,74 @@ fn print_events(tracker: &StepTracker, mut stdout: impl Write)
 					{
 						IdEvent::Operand(OperandEvent::Produce(t)) =>
 						{
-							write!(stdout, "Operand: Produce({},", id).unwrap();
+							write!(out, "Operand: Produce({},", id).unwrap();
 							if t.is_signed_int()
 							{
-								write!(stdout, "i").unwrap();
+								write!(out, "i").unwrap();
 							}
 							else if t.is_unsigned_int()
 							{
-								write!(stdout, "u").unwrap();
+								write!(out, "u").unwrap();
 							}
 							else
 							{
 								todo!()
 							}
-							writeln!(stdout, "{})", t.size() * 8)
+							writeln!(out, "{})", t.size() * 8)
 						},
-						IdEvent::Operand(p) => writeln!(stdout, "Operand: {:?}({})", p, id),
-						IdEvent::ControlIssue(i) => writeln!(stdout, "Issue: {:?}({})", i, id),
-						IdEvent::ControlTrigger(t) => writeln!(stdout, "Trigger: {:?}({})", t, id),
-						_ => writeln!(stdout, "IdEvent({}): {:?}", id, id_typ),
+						IdEvent::Operand(p) => writeln!(out, "Operand: {:?}({})", p, id),
+						IdEvent::ControlIssue(i) => writeln!(out, "Issue: {:?}({})", i, id),
+						IdEvent::ControlTrigger(t) => writeln!(out, "Trigger: {:?}({})", t, id),
+						_ => writeln!(out, "IdEvent({}): {:?}", id, id_typ),
 					}
 				},
 				Event::Load(addr, idx, bytes) =>
 				{
 					if let Some(idx) = idx
 					{
-						writeln!(stdout, "LoadStack({:#x},{}): {}", addr, idx, bytes)
+						writeln!(out, "LoadStack({:#x},{}): {}", addr, idx, bytes)
 					}
 					else
 					{
-						writeln!(stdout, "Load({:#x}): {}", addr, bytes)
+						writeln!(out, "Load({:#x}): {}", addr, bytes)
 					}
 				},
 				Event::Store(addr, idx, bytes) =>
 				{
 					if let Some(idx) = idx
 					{
-						writeln!(stdout, "StoreStack({:#x},{}): {}", addr, idx, bytes)
+						writeln!(out, "StoreStack({:#x},{}): {}", addr, idx, bytes)
 					}
 					else
 					{
-						writeln!(stdout, "Store({:#x}): {}", addr, bytes)
+						writeln!(out, "Store({:#x}): {}", addr, bytes)
 					}
 				},
 				Event::Stack(section, addr) =>
 				{
-					writeln!(stdout, "Stack: {:?}({:#x})", section, addr)
+					writeln!(out, "Stack: {:?}({:#x})", section, addr)
 				},
-				_ => writeln!(stdout, "Event: {:?}", event),
+				_ => writeln!(out, "Event: {:?}", event),
 			}
 			.unwrap();
 		}
-		writeln!(stdout, "STEP_END").unwrap();
+		writeln!(out, "STEP_END").unwrap();
+	}
+}
+
+fn print_events_final(tracker: &StepTracker, out: &mut Option<Box<dyn Write>>, buffering: bool)
+{
+	if let Some(out) = out
+	{
+		if buffering
+		{
+			writeln!(out, "\nvvvvvvvvvv  Simulation Events  vvvvvvvvvv").unwrap();
+		}
+		print_events(&tracker, out);
+		if buffering
+		{
+			writeln!(out, "\n^^^^^^^^^^  Simulation Events  ^^^^^^^^^^").unwrap();
+		}
 	}
 }
 
@@ -261,6 +284,13 @@ fn extract_elf<'a, E: FileHeader>(elf: ElfFile<'a, E, &'a [u8]>) -> (usize, Bloc
 pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 {
 	let contents = std::fs::read(args.path).unwrap();
+	let mut event_print_out = args.print_events.map(|p| -> Box<dyn Write> {
+		match p
+		{
+			None => Box::new(std::io::stdout()),
+			Some(path) => Box::new(BufWriter::new(std::fs::File::create(path).unwrap())),
+		}
+	});
 
 	let (entry, mut memory, address_space) = match args.target
 	{
@@ -357,6 +387,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			.step(&mut events);
 
 	let start_time = Instant::now();
+	let mut step_count = 1;
 	while res.is_ok()
 	{
 		let exec = res.unwrap();
@@ -381,6 +412,8 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 				}
 				else
 				{
+					print_events_final(&events, &mut event_print_out, args.print_events_buffered);
+
 					// Pretty print the returned operands
 					writeln!(stdout, "----------  Returned Operands  ----------").unwrap();
 					for val in returned_values.iter()
@@ -389,10 +422,6 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 						write!(stdout, "{}, ", val_str).unwrap();
 					}
 
-					if args.print_events
-					{
-						print_events(&events, stdout);
-					}
 					return 0;
 				}
 			}
@@ -403,24 +432,30 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 
 		if args.timeout > 0
 			&& ((args.timeout_type == TimeoutType::Instructions
-				&& events.all_events().count() == args.timeout) // We assume one instruction per step
+				&& step_count == args.timeout) // We assume one instruction per step
 				| (args.timeout_type == TimeoutType::Seconds
 					&& start_time.elapsed().as_secs() > args.timeout as u64))
 		{
 			if !args.machine_mode
 			{
+				print_events_final(&events, &mut event_print_out, args.print_events_buffered);
 				writeln!(stdout, "----------  Timeout  ----------").unwrap();
-
-				if args.print_events
-				{
-					print_events(&events, stdout);
-				}
 			}
 			return 123;
 		}
 
+		if let Some(out) = &mut event_print_out
+		{
+			if !args.print_events_buffered
+			{
+				print_events(&events, out);
+				events.clear_events()
+			}
+		}
+
 		events.new_step();
 		res = exec.step(&mut events);
+		step_count += 1;
 	}
 	// Implicit failure
 	match res
@@ -429,9 +464,9 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 		{
 			if !args.machine_mode
 			{
+				print_events_final(&events, &mut event_print_out, args.print_events_buffered);
 				writeln!(stdout, "----------  Error  ----------").unwrap();
 				writeln!(stdout, "{:?}", err).unwrap();
-				print_events(&events, stdout);
 			}
 		},
 		Ok(_) => unreachable!(),
