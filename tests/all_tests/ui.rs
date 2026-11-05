@@ -254,9 +254,14 @@ fn stack_base_elf64_label()
 	test_stack_base_elf_label(true)
 }
 
-fn test_stack_base_elf_label(is_64_bit: bool)
+/// The address of the `my_stack` symbol in the ELF files created by
+/// `stack_base_elf_file`.
+const STACK_LABEL_ADDR: usize = 0x30000;
+
+/// Writes the stack base program to a temporary ELF file that also contains a
+/// `my_stack` symbol at `STACK_LABEL_ADDR`.
+fn stack_base_elf_file(is_64_bit: bool) -> NamedTempFile
 {
-	let stack_label_addr = 0x30000;
 	let assembly = Raw::assemble(STACK_BASE_PROGRAM.split_whitespace()).unwrap();
 
 	// Add a symbol to the ELF that names the stack location.
@@ -277,25 +282,65 @@ fn test_stack_base_elf_label(is_64_bit: bool)
 	symbol.section = None;
 	symbol.st_shndx = SHN_ABS;
 	symbol.set_st_info(STB_GLOBAL, STT_NOTYPE);
-	symbol.st_value = stack_label_addr as u64;
+	symbol.st_value = STACK_LABEL_ADDR as u64;
 
 	let mut elf_bytes = Vec::new();
 	elf.write(&mut elf_bytes).unwrap();
-	std::fs::create_dir_all(TEMPORARY_DIR).unwrap();
-	let file = tempfile::Builder::new().tempfile_in(TEMPORARY_DIR).unwrap();
-	file.as_file().write_all(elf_bytes.as_slice()).unwrap();
+	create_temp_file(elf_bytes.as_slice())
+}
 
+/// The target flag value for an ELF file of the given width.
+fn elf_target(is_64_bit: bool) -> &'static str
+{
+	if is_64_bit
+	{
+		"scry64-unknown-none-elf"
+	}
+	else
+	{
+		"scry32-unknown-none-elf"
+	}
+}
+
+fn test_stack_base_elf_label(is_64_bit: bool)
+{
+	let file = stack_base_elf_file(is_64_bit);
 	assert_stack_base(
 		file.path(),
-		if is_64_bit
-		{
-			"scry64-unknown-none-elf"
-		}
-		else
-		{
-			"scry32-unknown-none-elf"
-		},
+		elf_target(is_64_bit),
 		Some("my_stack"),
-		stack_label_addr,
+		STACK_LABEL_ADDR,
 	);
+}
+
+/// Runs the given program file with a '--stack-base' label that does not
+/// exist, checking that the simulator fails with an error naming the label
+/// instead of running with the default stack base.
+fn assert_stack_base_unknown_label(file: &std::path::Path, target: &str)
+{
+	let label = "no_such_label";
+
+	let mut cmd = cargo_bin_cmd!("scryer");
+	cmd.arg(file)
+		.arg(format!("--target={}", target))
+		.arg("-i=1u8")
+		.arg(format!("--stack-base={}", label));
+
+	cmd.timeout(Duration::new(5, 0))
+		.assert()
+		.failure()
+		// The program must not have been simulated
+		.stdout(predicate::str::contains("Returned Operands").not())
+		// The error must name the missing label
+		.stderr(predicate::str::contains(
+			"Missing stack base label: no_such_label",
+		));
+}
+
+/// Tests that '--stack-base' given a label missing from the ELF is an error.
+#[test]
+fn stack_base_elf_unknown_label()
+{
+	let file = stack_base_elf_file(false);
+	assert_stack_base_unknown_label(file.path(), elf_target(false));
 }

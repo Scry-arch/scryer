@@ -328,16 +328,25 @@ fn extract_elf_and_stack_base<'a, E: FileHeader>(
 	elf: ElfFile<'a, E, &'a [u8]>,
 	stack_base_arg: &String,
 	stack_base: &mut usize,
-) -> (usize, BlockedMemory, u8)
+) -> Result<(usize, BlockedMemory, u8), ()>
 {
 	let (e, m, a, syms) = extract_elf(elf);
 
-	if let Some(addr) = syms.get(stack_base_arg)
+	if !stack_base_arg.is_empty()
+		&& stack_base_arg.parse::<usize>().is_err()
+		&& !stack_base_arg.starts_with("0x")
 	{
-		*stack_base = *addr;
+		if let Some(addr) = syms.get(stack_base_arg)
+		{
+			*stack_base = *addr;
+		}
+		else
+		{
+			return Err(()); // Label not found
+		}
 	}
 
-	(e, m, a)
+	Ok((e, m, a))
 }
 
 pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
@@ -392,6 +401,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			if let object::File::Elf32(elf) = object::File::parse(&*contents).unwrap()
 			{
 				extract_elf_and_stack_base(elf, &args.stack_base, &mut stack_base)
+					.expect(format!("Missing stack base label: {}", &args.stack_base).as_str())
 			}
 			else
 			{
@@ -403,6 +413,7 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			if let object::File::Elf64(elf) = object::File::parse(&*contents).unwrap()
 			{
 				extract_elf_and_stack_base(elf, &args.stack_base, &mut stack_base)
+					.expect(format!("Missing stack base label: {}", &args.stack_base).as_str())
 			}
 			else
 			{
