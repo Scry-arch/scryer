@@ -5,7 +5,7 @@ use crate::{
 use assert_cmd::cargo_bin_cmd;
 use object::{
 	build::elf::SectionData,
-	elf::{SHN_ABS, SHT_STRTAB, SHT_SYMTAB, STB_GLOBAL, STT_NOTYPE},
+	elf::{EM_X86_64, SHN_ABS, SHT_STRTAB, SHT_SYMTAB, STB_GLOBAL, STT_NOTYPE},
 };
 use predicates::prelude::{predicate, PredicateBooleanExt};
 use scry_asm::{Assemble, Raw};
@@ -98,7 +98,7 @@ fn print_events_to_file()
 
 	// Events must be in the file
 	let events = std::fs::read_to_string(events_file.path()).unwrap();
-	assert!(dbg!(&events).contains("Instruction: (0x0) add =>1"));
+	assert!(events.contains("Instruction: (0x0) add =>1"));
 	assert!(events.contains("Instruction: (0x2) ret 0"));
 	assert_eq!(events.matches("STEP_END").count(), 2);
 }
@@ -343,4 +343,115 @@ fn stack_base_elf_unknown_label()
 {
 	let file = stack_base_elf_file(false);
 	assert_stack_base_unknown_label(file.path(), elf_target(false));
+}
+
+/// Writes the `PROGRAM_ADD_RET` program to a temporary ELF file of the given
+/// width.
+fn add_ret_elf_file(is_64_bit: bool) -> NamedTempFile
+{
+	let assembly = Raw::assemble(once(PROGRAM_ADD_RET)).unwrap();
+	let elf = create_test_elf(assembly.as_slice(), 0, is_64_bit);
+	let mut elf_bytes = Vec::new();
+	elf.write(&mut elf_bytes).unwrap();
+	create_temp_file(elf_bytes.as_slice())
+}
+
+/// Runs the given `PROGRAM_ADD_RET` file in machine mode with the given
+/// '--target' flag (if any), checking that the program was simulated correctly
+/// (input 1 increments to 2).
+fn assert_add_ret_runs(file: &std::path::Path, target: Option<&str>)
+{
+	let mut cmd = cargo_bin_cmd!("scryer");
+	cmd.arg(file).arg("--machine-mode").arg("-i=1u8");
+	if let Some(target) = target
+	{
+		cmd.arg(format!("--target={}", target));
+	}
+
+	cmd.timeout(Duration::new(5, 0))
+		.assert()
+		.code(predicate::eq(2))
+		.stdout(predicates::str::is_empty())
+		.stderr(predicates::str::is_empty());
+}
+
+/// Tests that '--target=auto' detects a 32-bit ELF file.
+#[test]
+fn target_auto_elf32()
+{
+	let file = add_ret_elf_file(false);
+	assert_add_ret_runs(file.path(), Some("auto"));
+}
+
+/// Tests that '--target=auto' detects a 64-bit ELF file.
+#[test]
+fn target_auto_elf64()
+{
+	let file = add_ret_elf_file(true);
+	assert_add_ret_runs(file.path(), Some("auto"));
+}
+
+/// Tests that '--target=auto' detects a textual assembly file.
+#[test]
+fn target_auto_assembly()
+{
+	let file = create_add_ret_program_file();
+	assert_add_ret_runs(file.path(), Some("auto"));
+}
+
+/// Tests that '--target=auto' never detects a raw binary file.
+#[test]
+fn target_auto_raw()
+{
+	let assembly = Raw::assemble(once(PROGRAM_ADD_RET)).unwrap();
+	// Raw binaries can only be told apart from textual assembly if they are
+	// not valid text, so make sure this test's program is unambiguous.
+	assert!(
+		std::str::from_utf8(assembly.as_slice()).is_err(),
+		"Test program must not encode to valid UTF-8: {:?}",
+		assembly
+	);
+	let file = create_temp_file(assembly.as_slice());
+	let mut cmd = cargo_bin_cmd!("scryer");
+	cmd.arg(file.path())
+		.arg("--machine-mode")
+		.arg("-i=1u8")
+		.arg("--target=auto");
+
+	cmd.timeout(Duration::new(5, 0))
+		.assert()
+		.code(predicate::eq(123))
+		.stderr(predicates::str::contains("Unable to determine target"));
+}
+
+/// Tests that omitting '--target' defaults to autodetection.
+#[test]
+fn target_default_is_auto()
+{
+	let file = add_ret_elf_file(false);
+	assert_add_ret_runs(file.path(), None);
+}
+
+/// Tests that '--target=auto' rejects an ELF file for another architecture
+#[test]
+fn target_auto_elf_wrong_machine()
+{
+	let assembly = Raw::assemble(once(PROGRAM_ADD_RET)).unwrap();
+	let mut elf = create_test_elf(assembly.as_slice(), 0, false);
+	elf.header.e_machine = EM_X86_64;
+	let mut elf_bytes = Vec::new();
+	elf.write(&mut elf_bytes).unwrap();
+	let file = create_temp_file(elf_bytes.as_slice());
+
+	let mut cmd = cargo_bin_cmd!("scryer");
+	cmd.arg(file.path())
+		.arg("--machine-mode")
+		.arg("-i=1u8")
+		.arg("--target=auto");
+
+	cmd.timeout(Duration::new(5, 0))
+		.assert()
+		.failure()
+		.stdout(predicates::str::is_empty())
+		.stderr(predicates::str::contains("Unable to determine target"));
 }

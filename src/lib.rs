@@ -4,9 +4,9 @@ use crate::events::StepTracker;
 use clap::Parser;
 use num_bigint::{BigInt, BigUint, Sign};
 use object::{
-	elf::PT_LOAD,
+	elf::{EM_SCRY, PT_LOAD},
 	read::elf::{ElfFile, FileHeader, ProgramHeader},
-	Object, ObjectSegment, ObjectSymbol, SymbolKind,
+	Endianness, Object, ObjectSegment, ObjectSymbol, SymbolKind,
 };
 use regex::Regex;
 use scry_asm::{Assemble, Disassemble};
@@ -15,6 +15,7 @@ use scry_sim::{
 	OperandEvent, OperandList, Scalar, StackFrame, Value, ValueType,
 };
 use std::{
+	cmp::PartialEq,
 	collections::HashMap,
 	io::{BufWriter, Write},
 	time::Instant,
@@ -29,10 +30,10 @@ enum TimeoutType
 	Seconds,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum Target
 {
-	/// Tries to detect the target automatically
+	/// Tries to detect the target automatically from file contents, except 'raw'.
 	Auto,
 	/// Raw binary file containing only encoded instructions
 	Raw,
@@ -58,7 +59,7 @@ pub struct Cli
 	machine_mode: bool,
 
 	/// The target triple of the input file
-	#[clap(long, value_name = "TRIPLE")]
+	#[clap(short, long, value_name = "TRIPLE")]
 	#[arg(value_enum, default_value_t = Target::Auto)]
 	target: Target,
 
@@ -323,13 +324,18 @@ fn extract_elf<'a, E: FileHeader>(
 	)
 }
 
-/// Extracts the ELF file and overwrites the give stack base if necessary
-fn extract_elf_and_stack_base<'a, E: FileHeader>(
+/// Extracts the ELF file into its entry point, memory, the address width in
+/// powers of 2, and the stack base
+fn extract_elf_and_stack_base<'a, E: FileHeader<Endian = Endianness>>(
 	elf: ElfFile<'a, E, &'a [u8]>,
 	stack_base_arg: &String,
-	stack_base: &mut usize,
-) -> Result<(usize, BlockedMemory, u8), ()>
+) -> Result<(usize, BlockedMemory, u8, Option<usize>), ()>
 {
+	let mut stack_base_result = None;
+	if elf.elf_header().e_machine(Endianness::Little) != EM_SCRY
+	{
+		return Err(());
+	}
 	let (e, m, a, syms) = extract_elf(elf);
 
 	if !stack_base_arg.is_empty()
@@ -338,7 +344,7 @@ fn extract_elf_and_stack_base<'a, E: FileHeader>(
 	{
 		if let Some(addr) = syms.get(stack_base_arg)
 		{
-			*stack_base = *addr;
+			stack_base_result = Some(*addr);
 		}
 		else
 		{
@@ -346,16 +352,101 @@ fn extract_elf_and_stack_base<'a, E: FileHeader>(
 		}
 	}
 
-	Ok((e, m, a))
+	Ok((e, m, a, stack_base_result))
+}
+
+/// Extracts the entry point, memory, address width (power of 2), and stack base
+/// address of the given contents.
+///
+/// If necessary, will try and auto-detect the target, returning an error if
+/// unsuccessful.
+pub fn extract_target(
+	args: &Cli,
+	file_content: &[u8],
+) -> Result<(usize, BlockedMemory, u8, Option<usize>), String>
+{
+	if matches!(args.target, Target::Scry32UnknownNoneElf | Target::Auto)
+	{
+		if let Ok(object::File::Elf32(elf)) = object::File::parse(file_content)
+		{
+			extract_elf_and_stack_base(elf, &args.stack_base)
+				.map_err(|_| format!("Missing stack base label: {}", &args.stack_base))
+		}
+		else
+		{
+			Err("File does not match scry32-unknown-none-elf".into())
+		}
+	}
+	else
+	{
+		Err("".into())
+	}
+	.or_else(|elf32_err| {
+		if matches!(args.target, Target::Scry64UnknownNoneElf | Target::Auto)
+		{
+			if let Ok(object::File::Elf64(elf)) = object::File::parse(file_content)
+			{
+				extract_elf_and_stack_base(elf, &args.stack_base)
+					.map_err(|_| format!("Missing stack base label: {}", &args.stack_base))
+			}
+			else
+			{
+				Err("File does not match scry64-unknown-none-elf".into())
+			}
+		}
+		else
+		{
+			Err(elf32_err)
+		}
+	})
+	.or_else(|elf64_err| {
+		if matches!(args.target, Target::Assembly | Target::Auto)
+		{
+			// File is in textual assembly, assemble it
+			str::from_utf8(file_content)
+				.map_err(|_| "File not UTF-8".into())
+				.and_then(|text| {
+					scry_asm::Raw::assemble(std::iter::once(text))
+						.map_err(|_| "File not valid assembly".into())
+						.map(|program| (0, BlockedMemory::new(program.into_iter(), 0), 2, None))
+				})
+		}
+		else
+		{
+			Err(elf64_err)
+		}
+	})
+	.or_else(|assembly_err| {
+		if matches!(args.target, Target::Raw)
+		{
+			Ok((
+				0,
+				BlockedMemory::new(file_content.into_iter().cloned(), 0),
+				2,
+				None,
+			))
+		}
+		else
+		{
+			if args.target == Target::Auto
+			{
+				Err("Unable to determine target".into())
+			}
+			else
+			{
+				Err(assembly_err)
+			}
+		}
+	})
 }
 
 pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 {
 	// Read program
-	let contents = std::fs::read(args.path).unwrap();
+	let contents = std::fs::read(&args.path).unwrap();
 
 	// Prepare event output
-	let mut event_print_out = args.print_events.map(|p| -> Box<dyn Write> {
+	let mut event_print_out = args.print_events.clone().map(|p| -> Box<dyn Write> {
 		match p
 		{
 			None => Box::new(std::io::stdout()),
@@ -379,46 +470,20 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 		stack_base = addr;
 	}
 
-	let (entry, mut memory, address_space) = match args.target
+	let (entry, mut memory, address_space) = match extract_target(&args, contents.as_slice())
 	{
-		Target::Auto =>
+		Ok((e, m, a, s)) =>
 		{
-			unimplemented!()
+			if let Some(addr) = s
+			{
+				stack_base = addr;
+			}
+			(e, m, a)
 		},
-		Target::Raw => (0, BlockedMemory::new(contents.into_iter(), 0), 2),
-		Target::Assembly =>
+		Err(err) =>
 		{
-			// File is in textual assembly, assemble it
-			let program = scry_asm::Raw::assemble(std::iter::once(
-				String::from_utf8(contents).unwrap().as_str(),
-			))
-			.unwrap();
-
-			(0, BlockedMemory::new(program.into_iter(), 0), 2)
-		},
-		Target::Scry32UnknownNoneElf =>
-		{
-			if let object::File::Elf32(elf) = object::File::parse(&*contents).unwrap()
-			{
-				extract_elf_and_stack_base(elf, &args.stack_base, &mut stack_base)
-					.expect(format!("Missing stack base label: {}", &args.stack_base).as_str())
-			}
-			else
-			{
-				unimplemented!()
-			}
-		},
-		Target::Scry64UnknownNoneElf =>
-		{
-			if let object::File::Elf64(elf) = object::File::parse(&*contents).unwrap()
-			{
-				extract_elf_and_stack_base(elf, &args.stack_base, &mut stack_base)
-					.expect(format!("Missing stack base label: {}", &args.stack_base).as_str())
-			}
-			else
-			{
-				unimplemented!()
-			}
+			eprintln!("Invalid Target: {:?}", err);
+			return 123;
 		},
 	};
 
