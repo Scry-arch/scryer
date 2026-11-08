@@ -2,8 +2,8 @@ use crate::TEMPORARY_DIR;
 use object::{
 	build::elf::{Builder, SectionData},
 	elf::{
-		ProgramFlags, ELFOSABI_NONE, EM_SCRY, ET_EXEC, PF_R, PF_X, PT_PHDR, SHF_ALLOC,
-		SHF_EXECINSTR, SHT_PROGBITS,
+		ProgramFlags, ELFOSABI_NONE, EM_SCRY, ET_EXEC, PF_R, PF_W, PF_X, PT_PHDR, SHF_ALLOC,
+		SHF_EXECINSTR, SHF_WRITE, SHT_NOBITS, SHT_PROGBITS,
 	},
 	Endianness,
 };
@@ -14,10 +14,39 @@ mod programs;
 mod timeout;
 mod ui;
 
+/// A writable data segment to add to a test ELF.
+///
+/// The segment contains a `.data` section with the given initialized bytes,
+/// immediately followed (8-byte aligned) by a `.bss` section of the given size,
+/// which takes up no space in the file.
+struct TestDataSegment<'a>
+{
+	/// The address the segment (and therefore `.data`) is mapped to.
+	addr: usize,
+	/// The contents of the `.data` section.
+	data: &'a [u8],
+	/// The size of the `.bss` section in bytes.
+	bss_size: usize,
+}
+
 /// Creates an ELF file for testing containing the given code (.text section).
 ///
 /// The ELF maps the .text section to the given address.
 fn create_test_elf(code: &[u8], entry_addr: usize, is_64_bit: bool) -> Builder<'_>
+{
+	create_test_elf_with_data(code, entry_addr, is_64_bit, None)
+}
+
+/// Creates an ELF file for testing containing the given code (.text section)
+/// and, optionally, a writable data segment (.data and .bss sections).
+///
+/// The ELF maps the .text section to the given address.
+fn create_test_elf_with_data<'a>(
+	code: &'a [u8],
+	entry_addr: usize,
+	is_64_bit: bool,
+	data_segment: Option<TestDataSegment<'a>>,
+) -> Builder<'a>
 {
 	let mut elf = Builder::new(Endianness::Little, is_64_bit);
 	elf.header.os_abi = ELFOSABI_NONE;
@@ -29,6 +58,11 @@ fn create_test_elf(code: &[u8], entry_addr: usize, is_64_bit: bool) -> Builder<'
 	let phdr_seg = elf.segments.add().id();
 	let load_phdr_seg = elf.segments.add_load_segment(ProgramFlags(0), 4).id();
 	let program_seg = elf.segments.add_load_segment(ProgramFlags(0), 4).id();
+	// All segments must be created before the program header size is
+	// calculated
+	let data_seg = data_segment
+		.as_ref()
+		.map(|_| elf.segments.add_load_segment(ProgramFlags(0), 4).id());
 	let phdr_size = elf.program_headers_size();
 
 	// Config PHDR segment
@@ -81,6 +115,38 @@ fn create_test_elf(code: &[u8], entry_addr: usize, is_64_bit: bool) -> Builder<'
 	elf.segments.get_mut(load_phdr_seg).p_vaddr = elf.segments.get(phdr_seg).p_vaddr;
 	elf.segments.get_mut(load_phdr_seg).p_paddr = elf.segments.get(phdr_seg).p_vaddr;
 	elf.sections.get_mut(phdr_sec_id).delete = true;
+
+	// Config segment to contain sections: .data, .bss
+	if let (Some(data_seg), Some(data_segment)) = (data_seg, data_segment)
+	{
+		// In the file, the data comes right after .text
+		let data_offset = elf.header.e_phoff + phdr_size + code.len() as u64;
+		let segment = elf.segments.get_mut(data_seg);
+		segment.p_offset = data_offset;
+		segment.p_vaddr = data_segment.addr as u64;
+		segment.p_paddr = data_segment.addr as u64;
+		segment.p_flags = PF_R | PF_W;
+
+		// Create .data section
+		let data_section = elf.sections.add();
+		data_section.name = ".data".into();
+		data_section.sh_type = SHT_PROGBITS;
+		data_section.sh_addralign = 8;
+		data_section.sh_size = data_segment.data.len() as u64;
+		data_section.sh_flags = SHF_ALLOC | SHF_WRITE;
+		data_section.data = SectionData::Data(data_segment.data.into());
+		elf.segments.get_mut(data_seg).append_section(data_section);
+
+		// Create .bss section (takes no space in the file, only in memory)
+		let bss_section = elf.sections.add();
+		bss_section.name = ".bss".into();
+		bss_section.sh_type = SHT_NOBITS;
+		bss_section.sh_addralign = 8;
+		bss_section.sh_size = data_segment.bss_size as u64;
+		bss_section.sh_flags = SHF_ALLOC | SHF_WRITE;
+		bss_section.data = SectionData::UninitializedData(data_segment.bss_size as u64);
+		elf.segments.get_mut(data_seg).append_section(bss_section);
+	}
 
 	// Create section header string table section
 	let shstrtab_section = elf.sections.add();

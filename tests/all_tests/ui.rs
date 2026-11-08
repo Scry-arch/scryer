@@ -1,5 +1,5 @@
 use crate::{
-	all_tests::{create_temp_file, create_test_elf},
+	all_tests::{create_temp_file, create_test_elf, create_test_elf_with_data, TestDataSegment},
 	TEMPORARY_DIR,
 };
 use assert_cmd::cargo_bin_cmd;
@@ -19,10 +19,25 @@ const PROGRAM_ADD_RET: &'static str = "
 ";
 
 /// A program that returns the address of the stack base.
-const STACK_BASE_PROGRAM: &'static str = "
+const PROGRAM_STACK_BASE: &'static str = "
 	saddr u8 [0]
 	echo =>end
 	ret end
+end:
+";
+
+/// A program that takes three addresses as input, loads a u64 from each, and
+/// returns the three loaded values.
+const PROGRAM_LOAD_THREE: &'static str = "
+	echo =>ld_1, =>ld_2, =>
+	echo =>ld_3
+	ret end
+ld_1:
+	ld u64, =>end
+ld_2:
+	ld u64, =>end
+ld_3:
+	ld u64, =>end
 end:
 ";
 
@@ -35,7 +50,7 @@ fn create_add_ret_program_file() -> NamedTempFile
 /// Writes the stack base program to a temporary file as textual assembly.
 fn stack_base_assembly_file() -> NamedTempFile
 {
-	create_temp_file(STACK_BASE_PROGRAM.as_bytes())
+	create_temp_file(PROGRAM_STACK_BASE.as_bytes())
 }
 
 /// Tests can give input value relative to the built-in "entry" label.
@@ -262,7 +277,7 @@ const STACK_LABEL_ADDR: usize = 0x30000;
 /// `my_stack` symbol at `STACK_LABEL_ADDR`.
 fn stack_base_elf_file(is_64_bit: bool) -> NamedTempFile
 {
-	let assembly = Raw::assemble(STACK_BASE_PROGRAM.split_whitespace()).unwrap();
+	let assembly = Raw::assemble(PROGRAM_STACK_BASE.split_whitespace()).unwrap();
 
 	// Add a symbol to the ELF that names the stack location.
 	// It is an absolute, untyped, global symbol, which is what a linker emits
@@ -430,6 +445,92 @@ fn target_default_is_auto()
 {
 	let file = add_ret_elf_file(false);
 	assert_add_ret_runs(file.path(), None);
+}
+
+/// The address of the data segment (and the `.data` section) in the ELF files
+/// created by `bss_elf_file`.
+const BSS_TEST_DATA_ADDR: usize = 0x1000;
+
+/// The value stored in the `.data` section of the ELF files created by
+/// `bss_elf_file`. Its bytes are all non-zero, to be told apart from the
+/// zeroed `.bss`.
+const BSS_TEST_DATA_VALUE: u64 = 0x0102030405060708;
+
+/// The address of the `.bss` section in the ELF files created by
+/// `bss_elf_file`. It follows directly after the 8 bytes of `.data`.
+const BSS_TEST_BSS_ADDR: usize = BSS_TEST_DATA_ADDR + 8;
+
+/// The size of the `.bss` section in the ELF files created by `bss_elf_file`.
+const BSS_TEST_BSS_SIZE: usize = 64;
+
+/// Writes the `PROGRAM_LOAD_THREE` program to a temporary ELF file of the given
+/// width, which also has a writable segment containing a `.data` section
+/// holding `BSS_TEST_DATA_VALUE` followed by a `.bss` section of
+/// `BSS_TEST_BSS_SIZE` bytes.
+fn bss_elf_file(is_64_bit: bool) -> NamedTempFile
+{
+	let assembly = Raw::assemble(once(PROGRAM_LOAD_THREE)).unwrap();
+	let data = BSS_TEST_DATA_VALUE.to_le_bytes();
+	let elf = create_test_elf_with_data(
+		assembly.as_slice(),
+		0,
+		is_64_bit,
+		Some(TestDataSegment {
+			addr: BSS_TEST_DATA_ADDR,
+			data: &data,
+			bss_size: BSS_TEST_BSS_SIZE,
+		}),
+	);
+	let mut elf_bytes = Vec::new();
+	elf.write(&mut elf_bytes).unwrap();
+	create_temp_file(elf_bytes.as_slice())
+}
+
+/// Runs `bss_elf_file` of the given width, loading from the `.data` section
+/// and from both ends of the `.bss` section, checking that `.data` has its
+/// file contents while `.bss` is mapped (loading from it is not an error) and
+/// is all zeros.
+fn assert_bss_loaded_zeroed(is_64_bit: bool)
+{
+	let file = bss_elf_file(is_64_bit);
+	let addr_type = if is_64_bit { "u64" } else { "u32" };
+	let bss_first = BSS_TEST_BSS_ADDR;
+	let bss_last = BSS_TEST_BSS_ADDR + BSS_TEST_BSS_SIZE - 8;
+
+	let mut cmd = cargo_bin_cmd!("scryer");
+	cmd.arg(file.path())
+		.arg(format!("--target={}", elf_target(is_64_bit)))
+		.arg(format!("-i={}{}", BSS_TEST_DATA_ADDR, addr_type))
+		.arg(format!("-i={}{}", bss_first, addr_type))
+		.arg(format!("-i={}{}", bss_last, addr_type));
+
+	cmd.timeout(Duration::new(5, 0))
+		.assert()
+		.success()
+		.stdout(
+			predicate::str::is_match(format!(
+				"Returned Operands(.)*?\n{}u64, 0u64, 0u64",
+				BSS_TEST_DATA_VALUE
+			))
+			.unwrap(),
+		)
+		.stderr(predicates::str::is_empty());
+}
+
+/// Tests that the `.bss` section of a 32-bit ELF is loaded into memory and
+/// zeroed, even though it takes up no space in the file.
+#[test]
+fn bss_loaded_and_zeroed_elf32()
+{
+	assert_bss_loaded_zeroed(false);
+}
+
+/// Tests that the `.bss` section of a 64-bit ELF is loaded into memory and
+/// zeroed, even though it takes up no space in the file.
+#[test]
+fn bss_loaded_and_zeroed_elf64()
+{
+	assert_bss_loaded_zeroed(true);
 }
 
 /// Tests that '--target=auto' rejects an ELF file for another architecture
