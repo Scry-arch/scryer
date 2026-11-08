@@ -1,7 +1,7 @@
 #![cfg_attr(feature = "fail-on-warnings", deny(warnings))]
 
 use clap::Parser;
-use scryer::Cli;
+use scryer::cli::Cli;
 use std::{
 	io::{stderr, stdout},
 	process::exit,
