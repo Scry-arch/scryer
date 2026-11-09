@@ -16,23 +16,16 @@ impl StepTracker
 		}
 	}
 
-	pub fn new_step(&mut self)
-	{
-		self.events.push(vec![]);
-	}
-
 	pub fn all_events(&self) -> impl Iterator<Item = impl Iterator<Item = &Event> + '_>
 	{
 		self.events.iter().map(|events| events.iter())
 	}
 
 	/// Deletes all events.
-	///
-	/// `new_step` must be called after this function to ensure correct event
-	/// tracking.
 	pub fn clear_events(&mut self)
 	{
 		self.events.clear();
+		self.step();
 	}
 }
 
@@ -48,5 +41,10 @@ impl EventTracker for StepTracker
 	fn event(&mut self, event: Event)
 	{
 		self.events.last_mut().unwrap().push(event);
+	}
+
+	fn step(&mut self)
+	{
+		self.events.push(vec![]);
 	}
 }

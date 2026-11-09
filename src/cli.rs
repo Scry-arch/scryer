@@ -161,12 +161,14 @@ pub fn value_to_string(val: &Value) -> String
 	val
 }
 
-pub fn print_events(tracker: &StepTracker, out: &mut impl Write)
+pub fn print_events(tracker: &Option<StepTracker>, out: &mut impl Write)
 {
-	for step_events in tracker.all_events()
+	for step_events in tracker.iter().flat_map(|t| t.all_events())
 	{
+		let mut at_least_one_event = false;
 		for event in step_events
 		{
+			at_least_one_event = true;
 			match event
 			{
 				Event::Instruction(addr, instr) =>
@@ -236,11 +238,18 @@ pub fn print_events(tracker: &StepTracker, out: &mut impl Write)
 			}
 			.unwrap();
 		}
-		writeln!(out, "STEP_END").unwrap();
+		if at_least_one_event
+		{
+			writeln!(out, "STEP_END").unwrap();
+		}
 	}
 }
 
-pub fn print_events_final(tracker: &StepTracker, out: &mut Option<Box<dyn Write>>, buffering: bool)
+pub fn print_events_final(
+	tracker: &Option<StepTracker>,
+	out: &mut Option<Box<dyn Write>>,
+	buffering: bool,
+)
 {
 	if let Some(out) = out
 	{

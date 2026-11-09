@@ -193,7 +193,8 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 		stack_buffer: args.stack_buffer,
 		more_depth: 1, // Total depth = 4
 	};
-	let mut events = StepTracker::new();
+
+	let mut events = args.print_events.map(|_| StepTracker::new());
 
 	// Add stack memery block
 	memory.add_block((0..args.stack_buffer).map(|_| 0), stack_base);
@@ -264,11 +265,10 @@ pub fn run(args: Cli, mut stdout: impl Write, _stderr: impl Write) -> i32
 			if !args.print_events_buffered
 			{
 				print_events(&events, out);
-				events.clear_events()
+				events.as_mut().map(|e| e.clear_events());
 			}
 		}
 
-		events.new_step();
 		res = exec.step(&mut events);
 		step_count += 1;
 	}
